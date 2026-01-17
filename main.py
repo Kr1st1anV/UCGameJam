@@ -13,7 +13,10 @@ world_grid = []
 for i in range(GRID_SIZE):
     world_grid.append([])
     for j in range(GRID_SIZE):
-        world_grid[i].append(0)
+        if i == 0 and j == 8 or i == GRID_SIZE - 1 and j == 3:
+            world_grid[i].append(-1)
+        else:
+            world_grid[i].append(0)
 
 class Quitter:
 
@@ -33,6 +36,8 @@ class Quitter:
         self.ground = None
         self.x = 0
         self.y = 0
+        self.set_path = False
+        self.rm_path = False
 
     def x_transform(self, x, w, h):
         return (x * w / 2, (x * h/2)/2)
@@ -43,9 +48,11 @@ class Quitter:
     def initiate_blocks(self):
         self.ground_sprite = pygame.image.load('grass_cube.png').convert_alpha()
         self.path_sprite = pygame.image.load('path.png').convert_alpha()
+        self.water_sprite = pygame.image.load('Image.png').convert_alpha()
         scale_factor = 3
         self.ground = pygame.transform.scale(self.ground_sprite,(int(self.ground_sprite.get_width() * scale_factor), int(self.ground_sprite.get_height() * scale_factor)))
         self.path = pygame.transform.scale(self.path_sprite,(int(self.path_sprite.get_width() * scale_factor), int(self.path_sprite.get_height() * scale_factor)))
+        self.water = pygame.transform.scale(self.water_sprite,(int(self.water_sprite.get_width() * scale_factor), int(self.water_sprite.get_height() * scale_factor)))
         self.spriteSize = (self.ground.get_width(), self.ground.get_height())
 
     def run_app(self) -> None:
@@ -86,18 +93,58 @@ class Quitter:
 
                 # Hover effect
                 if i == grid_i and j == grid_j:
-                    draw_y -= 10 
+                    draw_y -= 10
+                    if self.set_path and world_grid[i][j] != -1:
+                        world_grid[i][j] = 1
+                    elif self.rm_path and world_grid[i][j] != -1:
+                        world_grid[i][j] = 0
                 
                 if world_grid[i][j] == 0:
                     self.surface.blit(self.ground, (draw_x, draw_y))
                 elif world_grid[i][j] == 1:
                     self.surface.blit(self.path, (draw_x, draw_y))
+                elif world_grid[i][j] == -1:
+                    self.surface.blit(self.water, (draw_x, draw_y))
 
     def draw_window(self) -> None:
         self.surface.fill(self.bgcolor)
         self.map_grid()        
         pygame.display.update()
-        
+
+    def is_grid_valid(self, world_grid, grid_size):
+        for i in range(grid_size):
+            for j in range(grid_size):
+                val = world_grid[i][j]
+                
+                if val == 0:
+                    continue
+                
+                ones_around = 0
+                neg_ones_around = 0
+                
+                for di, dj in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
+                    ni, nj = i + di, j + dj
+                    if 0 <= ni < grid_size and 0 <= nj < grid_size:
+                        neighbor_val = world_grid[ni][nj]
+                        if neighbor_val == 1:
+                            ones_around += 1
+                        elif neighbor_val == -1:
+                            neg_ones_around += 1
+                
+                if val == -1:
+                    if ones_around != 1:
+                        return False
+                
+                elif val == 1:
+                    if ones_around < 1 or ones_around > 2:
+                        return False
+                    
+                    if neg_ones_around > 0:
+                        if ones_around > 1:
+                            return False
+                            
+        return True
+            
 
     def run_event_loop(self) -> None:
         while True:
@@ -107,12 +154,19 @@ class Quitter:
                     self.quit_app()
                 elif event.type == pygame.MOUSEMOTION:
                     self.x, self.y = event.pos
-                elif event.type == pygame.MOUSEBUTTONDOWN:
-                    pass
+                elif event.type == pygame.MOUSEBUTTONDOWN: # 1 is left, 3 is right
+                    if event.button == 1:
+                        self.set_path = True
+                    elif event.button == 3:
+                        self.rm_path = True
                 elif event.type == pygame.MOUSEBUTTONUP:
-                    pass
+                    if event.button == 1:
+                        self.set_path = False
+                    elif event.button == 3:
+                        self.rm_path = False
                 elif event.type == pygame.KEYDOWN:
-                    pass
+                    if event.key == pygame.K_y:
+                        print(self.is_grid_valid(world_grid, GRID_SIZE))
                 elif event.type == pygame.KEYUP:
                     pass
             self.draw_window()
