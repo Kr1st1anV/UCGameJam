@@ -16,15 +16,15 @@ rgb = tuple[int,int,int]
 #SPRITES_DIR = os.path.join(ASSETS_DIR, 'sprites')
 
 PRRSET_WORLD = [[0, 0, 0, 0, 0, 0, 0, 0, -1, 0, 0, 0], 
-                [0, 0, 0, 0, 0, 0, -2, 0, 0, 0, 0, 0], 
-                [0, 0, 0, 0, 0, 0, 0, 0, -2, 0, 0, 0], 
-                [0, 0, 0, -2, 0, 0, 0, 0, 0, 0, 0, 0], 
+                [0, 0, 0, 0, 0, 0, "r2", 0, 0, 0, 0, 0], 
+                [0, 0, 0, 0, 0, 0, 0, 0, "r2", 0, 0, 0], 
+                [0, 0, 0, "r2", 0, 0, 0, 0, 0, 0, 0, 0], 
                 [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 
                 [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 
-                [0, 0, -2, 0, 0, 0, 0, 0, 0, 0, 0, 0], 
-                [0, 0, 0, 0, 0, 0, 0, -2, 0, 0, 0, 0], 
+                [0, 0, "r2", 0, 0, 0, 0, 0, 0, 0, 0, 0], 
+                [0, 0, 0, 0, 0, 0, 0, "r2", 0, 0, 0, 0], 
                 [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 
-                [0, 0, 0, 0, 0, -2, 0, 0, 0, 0, 0, 0], 
+                [0, 0, 0, 0, 0, "r2", 0, 0, 0, 0, 0, 0], 
                 [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 
                 [0, 0, 0, -1, 0, 0, 0, 0, 0, 0, 0, 0]]
 
@@ -112,6 +112,8 @@ class Game:
         self.water_sprite = self.load_image('water.png')
         self.chckpnt_sprite = self.load_image('grey.png')
         self.red_sprite = self.load_image('red.png')
+        self.white_sprite = self.load_image('white.png')
+        self.purple_sprite = self.load_image('purple.png')
         #self.tree_sprite = pygame.image.load('tree.png').convert_alpha()
         scale_factor = 2.8
         self.ground = pygame.transform.scale(self.ground_sprite,(int(self.ground_sprite.get_width() * scale_factor), int(self.ground_sprite.get_height() * scale_factor)))
@@ -119,6 +121,8 @@ class Game:
         self.water = pygame.transform.scale(self.water_sprite,(int(self.water_sprite.get_width() * scale_factor), int(self.water_sprite.get_height() * scale_factor)))
         self.chckpnt = pygame.transform.scale(self.chckpnt_sprite,(int(self.chckpnt_sprite.get_width() * scale_factor), int(self.chckpnt_sprite.get_height() * scale_factor)))
         self.red = pygame.transform.scale(self.red_sprite,(int(self.red_sprite.get_width() * scale_factor), int(self.red_sprite.get_height() * scale_factor)))
+        self.white = pygame.transform.scale(self.white_sprite,(int(self.white_sprite.get_width() * scale_factor), int(self.white_sprite.get_height() * scale_factor)))
+        self.purple = pygame.transform.scale(self.purple_sprite,(int(self.purple_sprite.get_width() * scale_factor), int(self.purple_sprite.get_height() * scale_factor)))
         self.spriteSize = (self.ground.get_width(), self.ground.get_height())
 
     def run_app(self) -> None:
@@ -159,7 +163,7 @@ class Game:
                 draw_y = pivot_y + (j + i) * half_h
 
                 # Hover effect
-                if self.edit_mode and self.world_grid[i][j] >= 0 and i == grid_i and j == grid_j:
+                if self.edit_mode and type(self.world_grid[i][j]) == int and self.world_grid[i][j] >= 0 and i == grid_i and j == grid_j:
                     draw_y -= 10
                     if self.set_path and self.paths_remaining > 0:
                         if  self.world_grid[i][j] != 1:
@@ -180,8 +184,10 @@ class Game:
                         self.surface.blit(self.water, (draw_x, draw_y))
                     else:
                         self.surface.blit(self.chckpnt, (draw_x, draw_y))
-                elif self.world_grid[i][j] == -2:
+                elif self.world_grid[i][j] == "r2":
                     self.surface.blit(self.red, (draw_x, draw_y))
+                elif self.world_grid[i][j] == -3:
+                    self.surface.blit(self.purple, (draw_x, draw_y))
 
     def get_path_waypoints(self):
         # 1. Find the starting -1 (bottom-most row preference)
@@ -236,10 +242,14 @@ class Game:
         self.text = self.font.render(f'Remaining: {self.paths_remaining}', True, (0, 0, 0))
         self.surface.blit(self.text, (100, 650))
         if self.round_active:
+            self.points = 0
             for mob in self.mobs:
                 if not mob.at_end:
                     mob.update()
                     mob.draw(self.surface)
+                else:
+                    self.points += 1
+
         #self.surface.blit(self.tree_sprite, (100, 100))
         self.draw_UI()
         pygame.display.update()
