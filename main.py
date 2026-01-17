@@ -13,6 +13,13 @@ ASSETS_DIR = os.path.join(os.path.dirname(__file__), 'tiles')
 
 rgb = tuple[int,int,int]
 
+list_files = []
+main = "UCGAMEJAM"
+for root, dir, files in os.walk(main):
+    list_files.append(files)
+
+print(list_files)
+
 #SPRITES_DIR = os.path.join(ASSETS_DIR, 'sprites')
 
 PRRSET_WORLD = [[0, 0, 0, 0, 0, 0, 0, 0, -1, 0, 0, 0], 
