@@ -13,13 +13,6 @@ ASSETS_DIR = os.path.join(os.path.dirname(__file__), 'tiles')
 
 rgb = tuple[int,int,int]
 
-list_files = []
-main = "UCGAMEJAM"
-for root, dir, files in os.walk(main):
-    list_files.append(files)
-
-print(list_files)
-
 #SPRITES_DIR = os.path.join(ASSETS_DIR, 'sprites')
 
 PRRSET_WORLD = [[0, 0, 0, 0, 0, 0, 0, 0, -1, 0, 0, 0], 
@@ -114,23 +107,16 @@ class Game:
         return pygame.image.load(path).convert_alpha()
     
     def initiate_blocks(self):
-        self.ground_sprite = self.load_image('grass_cube.png')
-        self.path_sprite = self.load_image('path.png')
-        self.water_sprite = self.load_image('water.png')
-        self.chckpnt_sprite = self.load_image('grey.png')
-        self.red_sprite = self.load_image('red.png')
-        self.white_sprite = self.load_image('white.png')
-        self.purple_sprite = self.load_image('purple.png')
-        #self.tree_sprite = pygame.image.load('tree.png').convert_alpha()
         scale_factor = 2.8
-        self.ground = pygame.transform.scale(self.ground_sprite,(int(self.ground_sprite.get_width() * scale_factor), int(self.ground_sprite.get_height() * scale_factor)))
-        self.path = pygame.transform.scale(self.path_sprite,(int(self.path_sprite.get_width() * scale_factor), int(self.path_sprite.get_height() * scale_factor)))
-        self.water = pygame.transform.scale(self.water_sprite,(int(self.water_sprite.get_width() * scale_factor), int(self.water_sprite.get_height() * scale_factor)))
-        self.chckpnt = pygame.transform.scale(self.chckpnt_sprite,(int(self.chckpnt_sprite.get_width() * scale_factor), int(self.chckpnt_sprite.get_height() * scale_factor)))
-        self.red = pygame.transform.scale(self.red_sprite,(int(self.red_sprite.get_width() * scale_factor), int(self.red_sprite.get_height() * scale_factor)))
-        self.white = pygame.transform.scale(self.white_sprite,(int(self.white_sprite.get_width() * scale_factor), int(self.white_sprite.get_height() * scale_factor)))
-        self.purple = pygame.transform.scale(self.purple_sprite,(int(self.purple_sprite.get_width() * scale_factor), int(self.purple_sprite.get_height() * scale_factor)))
-        self.spriteSize = (self.ground.get_width(), self.ground.get_height())
+        self.tiles = []
+        for root, dir, files in os.walk(ASSETS_DIR):
+            all_tiles = files
+            for tile in all_tiles:
+                temp_sprite = self.load_image(tile)
+                self.temp_tile = pygame.transform.scale(temp_sprite,(int(temp_sprite.get_width() * scale_factor), int(temp_sprite.get_height() * scale_factor)))
+                self.tiles.append(self.temp_tile)
+        #self.tree_sprite = pygame.image.load('tree.png').convert_alpha()
+        self.spriteSize = (self.tiles[0].get_width(), self.tiles[0].get_height())
 
     def run_app(self) -> None:
         pygame.init()
@@ -182,19 +168,19 @@ class Game:
                             self.paths_remaining += 1
                 
                 if self.world_grid[i][j] == 0:
-                    self.surface.blit(self.ground, (draw_x, draw_y))
+                    self.surface.blit(self.tiles[0], (draw_x, draw_y))
                 elif self.world_grid[i][j] == 1:
-                    self.surface.blit(self.path, (draw_x, draw_y))
+                    self.surface.blit(self.tiles[1], (draw_x, draw_y))
                 elif self.world_grid[i][j] == -1:
                     valid_path = self.is_grid_valid(self.world_grid, GRID_SIZE)
                     if valid_path:
-                        self.surface.blit(self.water, (draw_x, draw_y))
+                        self.surface.blit(self.tiles[2], (draw_x, draw_y))
                     else:
-                        self.surface.blit(self.chckpnt, (draw_x, draw_y))
+                        self.surface.blit(self.tiles[3], (draw_x, draw_y))
                 elif self.world_grid[i][j] == "r2":
-                    self.surface.blit(self.red, (draw_x, draw_y))
+                    self.surface.blit(self.tiles[4], (draw_x, draw_y))
                 elif self.world_grid[i][j] == -3:
-                    self.surface.blit(self.purple, (draw_x, draw_y))
+                    self.surface.blit(self.tiles[5], (draw_x, draw_y))
 
     def get_path_waypoints(self):
         # 1. Find the starting -1 (bottom-most row preference)
@@ -245,7 +231,7 @@ class Game:
         self.surface.fill(self.bgcolor)
         self.map_grid()   
         self.font = pygame.font.Font(None, 50)
-        self.surface.blit(self.path_sprite, (50, 650))
+        self.surface.blit(self.tiles[0], (50, 650))
         self.text = self.font.render(f'Remaining: {self.paths_remaining}', True, (0, 0, 0))
         self.surface.blit(self.text, (100, 650))
         if self.round_active:
