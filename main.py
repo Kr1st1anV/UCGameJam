@@ -4,10 +4,16 @@ import numpy as np
 
 DEFAULT_BGCOLOR = (137, 207, 240)
 DEFAULT_WIDTH   = 1280
-DEFAULT_HEIGHT  = 720 # if you're wondering, 809x500 is roughly the golden ratio
+DEFAULT_HEIGHT  = 720
+GRID_SIZE = 12
 
-# type synonym for convenience
 rgb = tuple[int,int,int]
+
+world_grid = []
+for i in range(GRID_SIZE):
+    world_grid.append([])
+    for j in range(GRID_SIZE):
+        world_grid[i].append(0)
 
 class Quitter:
 
@@ -25,6 +31,8 @@ class Quitter:
         self.width   = width if width else DEFAULT_WIDTH
         self.height  = height if height else DEFAULT_HEIGHT
         self.ground = None
+        self.x = 0
+        self.y = 0
 
     def x_transform(self, x, w, h):
         return (x * w / 2, (x * h/2)/2)
@@ -32,34 +40,62 @@ class Quitter:
     def y_transform(self,y, w, h):
         return ((-y * w) / 2, (y * h/2)/2)
     
+    def initiate_blocks(self):
+        self.ground_sprite = pygame.image.load('grass_cube.png').convert_alpha()
+        self.path_sprite = pygame.image.load('path.png').convert_alpha()
+        scale_factor = 3
+        self.ground = pygame.transform.scale(self.ground_sprite,(int(self.ground_sprite.get_width() * scale_factor), int(self.ground_sprite.get_height() * scale_factor)))
+        self.path = pygame.transform.scale(self.path_sprite,(int(self.path_sprite.get_width() * scale_factor), int(self.path_sprite.get_height() * scale_factor)))
+        self.spriteSize = (self.ground.get_width(), self.ground.get_height())
 
     def run_app(self) -> None:
         pygame.init()
         pygame.display.set_caption("Quitter")
         self.surface = pygame.display.set_mode((self.width,self.height))
         self.clock = pygame.time.Clock()
-        self.sprite = pygame.image.load('grass_cube.png').convert_alpha()
-        scale_factor = 3
-        self.ground = pygame.transform.scale(self.sprite,(int(self.sprite.get_width() * scale_factor), int(self.sprite.get_height() * scale_factor)))
-        self.spriteSize = (self.ground.get_width(), self.ground.get_height())
-        print(self.spriteSize)
+        self.initiate_blocks()
         self.run_event_loop()
 
     def quit_app(self) -> None:
         pygame.quit()
         sys.exit()
 
+    def map_grid(self): 
+        
+        w, h = self.spriteSize
+
+        half_w = w / 2
+        half_h = h / 4
+
+        pivot_x = DEFAULT_WIDTH / 2
+        pivot_y = 100
+
+        rel_x = self.x - pivot_x
+        rel_y = self.y - pivot_y
+
+        mouse_j = (rel_x / half_w + rel_y / half_h) / 2
+        mouse_i = (rel_y / half_h - rel_x / half_w) / 2
+
+        grid_i, grid_j = int(np.floor(mouse_i)), int(np.floor(mouse_j))
+
+        for i in range(GRID_SIZE):
+            for j in range(GRID_SIZE):
+
+                draw_x = pivot_x + (j - i) * half_w - half_w
+                draw_y = pivot_y + (j + i) * half_h
+
+                # Hover effect
+                if i == grid_i and j == grid_j:
+                    draw_y -= 10 
+                
+                if world_grid[i][j] == 0:
+                    self.surface.blit(self.ground, (draw_x, draw_y))
+                elif world_grid[i][j] == 1:
+                    self.surface.blit(self.path, (draw_x, draw_y))
+
     def draw_window(self) -> None:
         self.surface.fill(self.bgcolor)
-        grid_size = 12
-        for i in range(grid_size):
-            for j in range(grid_size):
-                i_hat = self.x_transform(j, self.spriteSize[0], self.spriteSize[1])
-                j_hat = self.y_transform(i, self.spriteSize[0], self.spriteSize[1])
-                inverse_T = [[i_hat[0], j_hat[0]],
-                             [i_hat[1], j_hat[1]]]
-
-                self.surface.blit(self.ground, (DEFAULT_WIDTH/2 + i_hat[0] + j_hat[0] - self.spriteSize[0]/2, self.spriteSize[1]/2 + i_hat[1] + j_hat[1]))
+        self.map_grid()        
         pygame.display.update()
         
 
@@ -70,7 +106,7 @@ class Quitter:
                 if event.type == pygame.QUIT:
                     self.quit_app()
                 elif event.type == pygame.MOUSEMOTION:
-                    pass
+                    self.x, self.y = event.pos
                 elif event.type == pygame.MOUSEBUTTONDOWN:
                     pass
                 elif event.type == pygame.MOUSEBUTTONUP:
@@ -80,7 +116,7 @@ class Quitter:
                 elif event.type == pygame.KEYUP:
                     pass
             self.draw_window()
-            self.clock.tick(24) # throttle redraws at 24fps (frames per second)
+            self.clock.tick(60) # throttle redraws at 60fps (frames per second)
 
 # ========
 
