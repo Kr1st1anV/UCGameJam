@@ -123,7 +123,7 @@ class Game:
 
     def run_app(self) -> None:
         pygame.init()
-        pygame.display.set_caption("Tower Offense")
+        pygame.display.set_caption("Power Offense")
         self.surface = pygame.display.set_mode((self.width,self.height))
         self.clock = pygame.time.Clock()
         self.initiate_blocks()
