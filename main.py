@@ -110,8 +110,8 @@ class Game:
         scale_factor = 2.8
         self.tiles = []
         for root, dir, files in os.walk(ASSETS_DIR):
-            print(files)
-            all_tiles = files
+            all_tiles = sorted(files)
+            print(all_tiles)
             for tile in all_tiles:
                 temp_sprite = self.load_image(tile)
                 self.temp_tile = pygame.transform.scale(temp_sprite,(int(temp_sprite.get_width() * scale_factor), int(temp_sprite.get_height() * scale_factor)))
