@@ -312,6 +312,7 @@ class Game:
     def run_event_loop(self) -> None:
         while True:
             events = pygame.event.get()
+            ### FOR WAVES SYSTEM
             for event in events:
                 if event.type == pygame.QUIT:
                     self.quit_app()
@@ -347,8 +348,6 @@ class Game:
                         self.mobs_to_spawn -= 1
                     else:
                         pygame.time.set_timer(self.SPAWN_MOB_EVENT, 0)
-                        self.edit_mode = True
-                        self.round_active = False
                 elif event.type == pygame.KEYUP:
                     pass
             self.draw_window()
