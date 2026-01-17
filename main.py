@@ -40,6 +40,7 @@ class Quitter:
         self.set_path = False
         self.rm_path = False
         self.paths_remaining = MAX_TILES
+        pygame.font.init()
         
 
     def x_transform(self, x, w, h):
@@ -52,11 +53,13 @@ class Quitter:
         self.ground_sprite = pygame.image.load('grass_cube.png').convert_alpha()
         self.path_sprite = pygame.image.load('path.png').convert_alpha()
         self.water_sprite = pygame.image.load('grey.png').convert_alpha()
+        self.red_sprite = pygame.image.load('red.png').convert_alpha()
         #self.tree_sprite = pygame.image.load('tree.png').convert_alpha()
         scale_factor = 3
         self.ground = pygame.transform.scale(self.ground_sprite,(int(self.ground_sprite.get_width() * scale_factor), int(self.ground_sprite.get_height() * scale_factor)))
         self.path = pygame.transform.scale(self.path_sprite,(int(self.path_sprite.get_width() * scale_factor), int(self.path_sprite.get_height() * scale_factor)))
         self.water = pygame.transform.scale(self.water_sprite,(int(self.water_sprite.get_width() * scale_factor), int(self.water_sprite.get_height() * scale_factor)))
+        self.red = pygame.transform.scale(self.red_sprite,(int(self.red_sprite.get_width() * scale_factor), int(self.red_sprite.get_height() * scale_factor)))
         self.spriteSize = (self.ground.get_width(), self.ground.get_height())
 
     def run_app(self) -> None:
@@ -112,11 +115,19 @@ class Quitter:
                 elif world_grid[i][j] == 1:
                     self.surface.blit(self.path, (draw_x, draw_y))
                 elif world_grid[i][j] == -1:
-                    self.surface.blit(self.water, (draw_x, draw_y))
+                    valid_path = self.is_grid_valid(world_grid, GRID_SIZE)
+                    if valid_path:
+                        self.surface.blit(self.red, (draw_x, draw_y))
+                    else:
+                        self.surface.blit(self.water, (draw_x, draw_y))
 
     def draw_window(self) -> None:
         self.surface.fill(self.bgcolor)
         self.map_grid()   
+        self.font = pygame.font.Font(None, 74)
+        self.text = self.font.render(f'Paths Remain: {self.paths_remaining}', True, (0, 0, 0))
+        self.surface.blit(self.text, (250, 250))
+
         #self.surface.blit(self.tree_sprite, (100, 100))
         pygame.display.update()
 
@@ -174,8 +185,7 @@ class Quitter:
                     elif event.button == 3:
                         self.rm_path = False
                 elif event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_y:
-                        print(self.is_grid_valid(world_grid, GRID_SIZE))
+                    pass
                 elif event.type == pygame.KEYUP:
                     pass
             self.draw_window()
