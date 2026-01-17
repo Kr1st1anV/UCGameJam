@@ -1,5 +1,6 @@
 import sys
 import pygame
+import numpy as np
 
 DEFAULT_BGCOLOR = (137, 207, 240)
 DEFAULT_WIDTH   = 1280
@@ -55,6 +56,7 @@ class Quitter:
             for j in range(grid_size):
                 x = self.i_hat(j, self.spriteSize[0], self.spriteSize[1])
                 y = self.j_hat(i, self.spriteSize[0], self.spriteSize[1])
+                
                 self.surface.blit(self.ground, (DEFAULT_WIDTH/2 + x[0] + y[0] - self.spriteSize[0]/2, self.spriteSize[1]/2 + x[1] + y[1]))
         pygame.display.update()
         
