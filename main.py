@@ -43,6 +43,7 @@ class Mob:
         self.pos = pygame.Vector2(self.waypoints[0]) if self.waypoints else pygame.Vector2(0,0)
         self.target_idx = 1
         self.speed = 0.5
+        self.at_end = False
 
     def update(self):
         if self.target_idx < len(self.waypoints):
@@ -53,6 +54,8 @@ class Mob:
             else:
                 self.pos = pygame.Vector2(target)
                 self.target_idx += 1
+        else:
+            self.at_end = True
 
     def draw(self, surface):
         # Draw a small red square as the 'runner'
@@ -90,6 +93,7 @@ class Game:
         self.SPAWN_MOB_EVENT = pygame.USEREVENT + 1
         self.mobs = [] # List to track all active mobs
         self.mobs_to_spawn = 0
+        self.points = 0
         pygame.font.init()        
 
     def x_transform(self, x, w, h):
@@ -219,8 +223,10 @@ class Game:
     
     def draw_UI(self) -> None: 
         self.font = pygame.font.Font(None, 50)
-        self.text = self.font.render(f'Mobs: ', True, (0, 0, 0))
-        self.surface.blit(self.text, (100, 30))
+        self.mobs_text = self.font.render(f'Mobs: {self.mobs_to_spawn}', True, (0, 0, 0))
+        self.points_text = self.font.render(f'Points: {self.points}', True, (0, 0, 0))
+        self.surface.blit(self.mobs_text, (100, 30))
+        self.surface.blit(self.points_text, (100, 80))
 
     def draw_window(self) -> None:
         self.surface.fill(self.bgcolor)
@@ -231,8 +237,9 @@ class Game:
         self.surface.blit(self.text, (100, 650))
         if self.round_active:
             for mob in self.mobs:
-                mob.update()
-                mob.draw(self.surface)
+                if not mob.at_end:
+                    mob.update()
+                    mob.draw(self.surface)
         #self.surface.blit(self.tree_sprite, (100, 100))
         self.draw_UI()
         pygame.display.update()
