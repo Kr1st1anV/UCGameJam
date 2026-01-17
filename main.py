@@ -110,6 +110,7 @@ class Game:
         scale_factor = 2.8
         self.tiles = []
         for root, dir, files in os.walk(ASSETS_DIR):
+            print(files)
             all_tiles = files
             for tile in all_tiles:
                 temp_sprite = self.load_image(tile)
@@ -332,7 +333,7 @@ class Game:
                         self.edit_mode = True
                         self.round_active = False
                     if event.key == pygame.K_SPACE:
-                        if self.is_grid_valid(self.world_grid, GRID_SIZE):
+                        if self.is_grid_valid(self.world_grid, GRID_SIZE) and not self.round_active:
                             self.edit_mode = False
                             self.round_active = True
                             self.mobs_to_spawn = 10 
@@ -346,6 +347,8 @@ class Game:
                         self.mobs_to_spawn -= 1
                     else:
                         pygame.time.set_timer(self.SPAWN_MOB_EVENT, 0)
+                        self.edit_mode = True
+                        self.round_active = False
                 elif event.type == pygame.KEYUP:
                     pass
             self.draw_window()
