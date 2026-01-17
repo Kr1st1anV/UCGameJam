@@ -171,17 +171,17 @@ class Game:
                 if self.world_grid[i][j] == 0:
                     self.surface.blit(self.tiles[0], (draw_x, draw_y))
                 elif self.world_grid[i][j] == 1:
-                    self.surface.blit(self.tiles[1], (draw_x, draw_y))
+                    self.surface.blit(self.tiles[2], (draw_x, draw_y))
                 elif self.world_grid[i][j] == -1:
                     valid_path = self.is_grid_valid(self.world_grid, GRID_SIZE)
                     if valid_path:
-                        self.surface.blit(self.tiles[2], (draw_x, draw_y))
-                    else:
                         self.surface.blit(self.tiles[3], (draw_x, draw_y))
+                    else:
+                        self.surface.blit(self.tiles[1], (draw_x, draw_y))
                 elif self.world_grid[i][j] == "r2":
                     self.surface.blit(self.tiles[4], (draw_x, draw_y))
                 elif self.world_grid[i][j] == -3:
-                    self.surface.blit(self.tiles[5], (draw_x, draw_y))
+                    self.surface.blit(self.tiles[6], (draw_x, draw_y))
 
     def get_path_waypoints(self):
         # 1. Find the starting -1 (bottom-most row preference)
