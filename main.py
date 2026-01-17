@@ -28,6 +28,8 @@ PRRSET_WORLD = [[0, 0, 0, 0, 0, 0, 0, 0, -1, 0, 0, 0],
                 [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 
                 [0, 0, 0, -1, 0, 0, 0, 0, 0, 0, 0, 0]]
 
+                
+
 class Quitter:
 
     bgcolor : rgb
@@ -50,6 +52,8 @@ class Quitter:
         self.rm_path = False
         self.paths_remaining = MAX_TILES
         self.reset_grid()
+        self.round_active = False
+        self.edit_mode = True
         pygame.font.init()        
 
     def x_transform(self, x, w, h):
@@ -115,7 +119,7 @@ class Quitter:
                 draw_y = pivot_y + (j + i) * half_h
 
                 # Hover effect
-                if self.world_grid[i][j] >= 0 and i == grid_i and j == grid_j:
+                if self.edit_mode and self.world_grid[i][j] >= 0 and i == grid_i and j == grid_j:
                     draw_y -= 10
                     if self.set_path and self.paths_remaining > 0:
                         if  self.world_grid[i][j] != 1:
@@ -139,6 +143,9 @@ class Quitter:
                 elif self.world_grid[i][j] == -2:
                     self.surface.blit(self.red, (draw_x, draw_y))
 
+    def start_round(self):
+        pygame.draw.rect(self.surface, (0,0,0), pygame.Rect(100,100,20,20))
+
     def draw_window(self) -> None:
         self.surface.fill(self.bgcolor)
         self.map_grid()   
@@ -146,7 +153,8 @@ class Quitter:
         self.surface.blit(self.path_sprite, (50, 650))
         self.text = self.font.render(f'Remaining: {self.paths_remaining}', True, (0, 0, 0))
         self.surface.blit(self.text, (100, 650))
-
+        if self.round_active:
+            self.start_round()
         #self.surface.blit(self.tree_sprite, (100, 100))
         pygame.display.update()
 
@@ -232,6 +240,12 @@ class Quitter:
                 elif event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_r:
                         self.reset_grid()
+                        self.edit_mode = True
+                        self.round_active = False
+                    if event.key == pygame.K_SPACE:
+                        if self.is_grid_valid(self.world_grid, GRID_SIZE):
+                            self.edit_mode = False
+                            self.round_active = True
                 elif event.type == pygame.KEYUP:
                     pass
             self.draw_window()
