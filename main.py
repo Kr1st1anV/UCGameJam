@@ -23,12 +23,13 @@ class Quitter:
         self.bgcolor = bgcolor if bgcolor else DEFAULT_BGCOLOR
         self.width   = width if width else DEFAULT_WIDTH
         self.height  = height if height else DEFAULT_HEIGHT
-        self.image = None
+        self.ground = None
 
     def run_app(self) -> None:
         pygame.init()
         pygame.display.set_caption("Quitter")
         self.surface = pygame.display.set_mode((self.width,self.height))
+        print(self.surface.get_width(), self.surface.get_height())
         self.clock = pygame.time.Clock()
         self.ground = pygame.image.load('grass_cube.png').convert_alpha()
         print("Hello")
@@ -41,7 +42,9 @@ class Quitter:
 
     def draw_window(self) -> None:
         self.surface.fill(self.bgcolor)
-        self.surface.blit(self.ground, (50,50))
+        for i in range(10):
+            for j in range(10):
+                self.surface.blit(self.ground, (50 + 30*i,50 + 30*j))
         pygame.display.update()
         
 
