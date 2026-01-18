@@ -7,12 +7,14 @@ import maps
 import random
 
 DEFAULT_BGCOLOR = (137, 207, 240)
-DEFAULT_WIDTH   = 1280
-DEFAULT_HEIGHT  = 720
+DEFAULT_WIDTH   = 978
+DEFAULT_HEIGHT  = 750
 GRID_SIZE = 10
 MAX_TILES = 35
 ASSETS_DIR = os.path.join(os.path.dirname(__file__), 'tiles')
 BGROUND_DIR = os.path.join(os.path.dirname(__file__), 'bground')
+TOWERS_DIR = os.path.join(os.path.dirname(__file__), 'towers')
+MOBS_DIR = os.path.join(os.path.dirname(__file__), 'mobs')
 
 rgb = tuple[int,int,int]
 num = random.randint(1,5)
@@ -21,7 +23,7 @@ num = random.randint(1,5)
 #SPRITES_DIR = os.path.join(ASSETS_DIR, 'sprites')
 
 
-PRESET_WORLD = [[0, 0, 0, 0, 0, 0, 0, 0, -1, 0], 
+PRESET_WORLD = [[-1, 0, 0, 0, 0, 0, 0, 0, 0, 0], 
                 [0, 0, 0, 0, 0, 0, "r2", 0, 0, 0], 
                 [0, -9, 0, 0, 0, 0, 0, 0, "r2", 0], 
                 [0, 0, 0, "r2", 0, 0, 0, 0, 0, 0], 
@@ -39,7 +41,8 @@ class Mob:
         self.waypoints = []
         w, h = sprite_size
         half_w, half_h = w / 2, h / 4
-        pivot_y = 125 * 2.14
+        pivot_x = DEFAULT_WIDTH /3
+        pivot_y = 125 * 2
         self.mobcolor = [(200, 50, 50),(93, 63, 211),(0, 255, 255)]
         self.mobtype = ['red.png', 'purple.png', 'water.png']
         self.randmob = random.randint(0, len(self.mobtype) - 1)
@@ -52,8 +55,12 @@ class Mob:
             
         self.pos = pygame.Vector2(self.waypoints[0]) if self.waypoints else pygame.Vector2(0,0)
         self.target_idx = 1
-        self.speed = 0.5
+        self.speed = 1.2
         self.at_end = False
+    
+    def load_mob(self, name):
+        path = os.path.join(MOBS_DIR, name)
+        return pygame.image.load(path).convert_alpha()
 
     def update(self):
         if self.target_idx < len(self.waypoints):
@@ -68,11 +75,10 @@ class Mob:
             self.at_end = True  
 
     def draw(self, surface):
+        pass
         # Draw a small red square as the 'runner'
-        runner_rect = pygame.Rect(0, 0, 24, 24)
-        runner_rect.center = (self.pos.x, self.pos.y)
-        pygame.draw.rect(surface, self.mobcolor[self.randmob], runner_rect)
-        pygame.draw.rect(surface, (255, 255, 255), runner_rect, 2)                
+        #mob_sprite = self.load_mob("bee1.png")
+        #surface.blit(mob_sprite, (self.pos.x - 32, self.pos.y - 32))           
 
 class Game:
 
@@ -124,8 +130,12 @@ class Game:
         path = os.path.join(BGROUND_DIR, name)
         return pygame.image.load(path).convert_alpha()
     
+    def load_towers(self, name):
+        path = os.path.join(TOWERS_DIR, name)
+        return pygame.image.load(path).convert_alpha()
+    
     def initiate_blocks(self):
-        scale_factor = 1.5
+        scale_factor = 1
         self.tiles = {}
         for root, dir, files in os.walk(ASSETS_DIR):
             all_tiles = sorted(files)
@@ -142,12 +152,26 @@ class Game:
         self.spriteSize = (self.tiles["dark_grass"].get_width(), self.tiles["dark_grass"].get_height())
         self.h_tiles = {name : self.highlight_block(tile) for name, tile in self.tiles.items()}
 
+    def initiate_towers(self):
+        scale_factor = 0.75
+        self.towers = {}
+        for root, dir, files in os.walk(TOWERS_DIR):
+            all_towers = sorted(files)
+            for tile in all_towers:
+                name = tile.split(".")[0]
+                temp_sprite = self.load_towers(tile)
+                self.temp_t = pygame.transform.scale(temp_sprite,(int(temp_sprite.get_width() * scale_factor), int(temp_sprite.get_height() * scale_factor)))
+                self.towers[name] = self.temp_t
+        self.towerSize = (self.towers["bee1"].get_width(), self.towers["bee1"].get_height())
+        self.h_towers = {name : self.highlight_block(tower) for name, tower in self.towers.items()}
+
     def run_app(self) -> None:
         pygame.init()
         pygame.display.set_caption("Power Offense")
         self.surface = pygame.display.set_mode((self.width,self.height))
         self.clock = pygame.time.Clock()
         self.initiate_blocks()
+        self.initiate_towers()
         self.run_event_loop()
 
     def quit_app(self) -> None:
@@ -162,8 +186,8 @@ class Game:
         half_w = w / 2
         half_h = h / 4
 
-        pivot_x = DEFAULT_WIDTH / 2 - 10
-        pivot_y = 125 * 2.14
+        pivot_x = DEFAULT_WIDTH / 3
+        pivot_y = 125 * 2
 
         rel_x = self.x - pivot_x
         rel_y = self.y - pivot_y
@@ -228,38 +252,6 @@ class Game:
                     elif self.world_grid[i][j] == -9:
                         self.surface.blit(self.tiles["dark_grass"], (draw_x, draw_y)) # Tree
 
-    def map_objects(self): 
-        
-        w, h = self.spriteSize
-
-        half_w = w / 2
-        half_h = h / 4
-
-        pivot_x = DEFAULT_WIDTH / 2
-        pivot_y = 125 * 2.14
-
-        rel_x = self.x - pivot_x
-        rel_y = self.y - pivot_y
-
-        mouse_j = (rel_x / half_w + rel_y / half_h) / 2
-        mouse_i = (rel_y / half_h - rel_x / half_w) / 2
-
-        grid_i, grid_j = int(np.floor(mouse_i)), int(np.floor(mouse_j))
-
-        for i in range(GRID_SIZE):
-            for j in range(GRID_SIZE):
-
-                draw_x = pivot_x + (j - i) * half_w - half_w
-                draw_y = pivot_y + (j + i) * half_h
-
-                # Hover effect
-                if i == grid_i and j == grid_j:
-                    self.tiles["tree"].set_alpha(100)
-                else:
-                    self.tiles["tree"].set_alpha(255)
-                if self.world_grid[i][j] == -9:
-                    self.surface.blit(self.tiles["tree"], (draw_x, draw_y - h * 1.52)) # Tree
-
     def get_path_waypoints(self):
         start_pos = None
         for i in range(GRID_SIZE - 1, -1, -1):
@@ -317,7 +309,7 @@ class Game:
     def get_object_layers(self):
         w, h = self.spriteSize
         half_w, half_h = w / 2, h / 4
-        pivot_x, pivot_y = DEFAULT_WIDTH / 2, 125 * 2.14
+        pivot_x, pivot_y = DEFAULT_WIDTH / 3, 125 * 2
 
         rel_x, rel_y = self.x - pivot_x, self.y - pivot_y
         mouse_j = (rel_x / half_w + rel_y / half_h) / 2
@@ -339,22 +331,36 @@ class Game:
                         'z': draw_y, 
                         'type': 'tree', 
                         'surf': tree_surf, 
-                        'pos': (draw_x, draw_y - h * 1.52)
+                        'pos': (draw_x - 8, draw_y - h * 1.54)
+                    })
+                elif self.world_grid[i][j] == "r2":
+                    draw_x = pivot_x + (j - i) * half_w - half_w
+                    draw_y = pivot_y + (j + i) * half_h
+                    tree_surf = self.towers["bee1"].copy()
+                    if i == grid_i and j == grid_j:
+                        tree_surf.set_alpha(100)
+                    else:
+                        tree_surf.set_alpha(255)
+                    tree_elements.append({
+                        'z': draw_y, 
+                        'type': 'bee1', 
+                        'surf': tree_surf, 
+                        'pos': (draw_x, draw_y - h * 0.76)
                     })
         return tree_elements
 
     def draw_window(self) -> None:
         self.surface.fill(self.bgcolor)
-        self.background = self.load_world("bg.png")
-        self.bg_image = pygame.transform.scale(self.background,(int(self.background.get_width() * 1), int(self.background.get_height() * 1)))
-        self.surface.blit(self.bg_image, (200, -50))
-        self.island = self.load_world("island.png")
-        self.island_image = pygame.transform.scale(self.island,(int(self.island.get_width() * 1.1), int(self.island.get_height() * 1.1)))
-        self.surface.blit(self.island_image, (150, -50))
+        self.background = self.load_world("fullbg.png")
+        self.bg_image = pygame.transform.scale(self.background,(int(self.background.get_width() * 0.7), int(self.background.get_height() * 0.75)))
+        self.surface.blit(self.bg_image, (0, 0))
+        # self.island = self.load_world("island.png")
+        # self.island_image = pygame.transform.scale(self.island,(int(self.island.get_width() * 1.1), int(self.island.get_height() * 1.1)))
+        # self.surface.blit(self.island_image, (150, -50))
         self.map_grid()
         self.tree_life = self.load_world("tree_of_life.png")
         self.tree_life_img = pygame.transform.scale(self.tree_life,(int(self.tree_life.get_width() * 1), int(self.tree_life.get_height() * 1)))
-        self.surface.blit(self.tree_life_img, (590, 25))
+        self.surface.blit(self.tree_life_img, (250, 50))
         self.surface.blit(self.load_image('red.png'), (1130, 600))
         self.surface.blit(self.load_image('purple.png'), (1170, 600))
         self.surface.blit(self.load_image('water.png'), (1210, 600))
@@ -382,6 +388,8 @@ class Game:
         # Draw based off order
         for item in layer_queue:
             if item['type'] == 'tree':
+                self.surface.blit(item['surf'], item['pos'])
+            elif item['type'] == 'bee1':
                 self.surface.blit(item['surf'], item['pos'])
             elif item['type'] == 'mob':
                 item['obj'].draw(self.surface)
@@ -478,9 +486,10 @@ class Game:
                         self.rm_path = False
                 elif event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_r:
-                        self.reset_grid()
-                        self.edit_mode = True
-                        self.round_active = False
+                        if not self.round_active:
+                            self.reset_grid()
+                            self.edit_mode = True
+                            self.round_active = False
 ########################################################################################################################################
                     if event.key == pygame.K_SPACE:
                         if self.is_grid_valid(self.world_grid, GRID_SIZE) and not self.round_active and self.round_ended:
