@@ -39,7 +39,8 @@ class Mob:
         self.waypoints = []
         w, h = sprite_size
         half_w, half_h = w / 2, h / 4
-        self.mobtype = [(200, 50, 50),(93, 63, 211),(255, 192, 0)]
+        self.mobcolor = [(200, 50, 50),(93, 63, 211),(0, 255, 255)]
+        self.mobtype = ['red.png', 'purple.png', 'water.png']
         self.randmob = random.randint(0, len(self.mobtype) - 1)
         
         # Convert grid indices to isometric screen coordinates
@@ -69,7 +70,7 @@ class Mob:
         # Draw a small red square as the 'runner'
         runner_rect = pygame.Rect(0, 0, 24, 24)
         runner_rect.center = (self.pos.x, self.pos.y)
-        pygame.draw.rect(surface, self.mobtype[self.randmob], runner_rect)
+        pygame.draw.rect(surface, self.mobcolor[self.randmob], runner_rect)
         pygame.draw.rect(surface, (255, 255, 255), runner_rect, 2)                
 
 class Game:
@@ -271,8 +272,10 @@ class Game:
         self.font = pygame.font.Font(None, 50)
         self.mobs_text = self.font.render(f'Mobs: {self.mobs_to_spawn}', True, (0, 0, 0))
         self.points_text = self.font.render(f'Points: {self.points}', True, (0, 0, 0))
+        self.units_text = self.font.render(f'Units:', True, (0, 0, 0))
         self.surface.blit(self.mobs_text, (100, 30))
         self.surface.blit(self.points_text, (100, 80))
+        self.surface.blit(self.units_text, (980, 550))
 
     def get_object_layers(self):
         w, h = self.spriteSize
@@ -305,6 +308,9 @@ class Game:
 
     def draw_window(self) -> None:
         self.surface.fill(self.bgcolor)
+        self.surface.blit(self.load_image('red.png'), (980, 600))
+        self.surface.blit(self.load_image('purple.png'), (1020, 600))
+        self.surface.blit(self.load_image('water.png'), (1060, 600))
         self.map_grid()
 
         layer_queue = []
