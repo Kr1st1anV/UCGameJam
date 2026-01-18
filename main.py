@@ -12,6 +12,7 @@ DEFAULT_HEIGHT  = 720
 GRID_SIZE = 12
 MAX_TILES = 35
 ASSETS_DIR = os.path.join(os.path.dirname(__file__), 'tiles')
+BGROUND_DIR = os.path.join(os.path.dirname(__file__), 'bground')
 
 rgb = tuple[int,int,int]
 num = random.randint(1,5)
@@ -39,6 +40,7 @@ class Mob:
         self.waypoints = []
         w, h = sprite_size
         half_w, half_h = w / 2, h / 4
+        pivot_y = 125 * 2.5
         self.mobcolor = [(200, 50, 50),(93, 63, 211),(0, 255, 255)]
         self.mobtype = ['red.png', 'purple.png', 'water.png']
         self.randmob = random.randint(0, len(self.mobtype) - 1)
@@ -47,7 +49,7 @@ class Mob:
         for i, j in grid_coords:
             tx = pivot_x + (j - i) * half_w
             ty = pivot_y + (j + i) * half_h
-            self.waypoints.append(pygame.Vector2(tx, ty + 80))
+            self.waypoints.append(pygame.Vector2(tx, ty))
             
         self.pos = pygame.Vector2(self.waypoints[0]) if self.waypoints else pygame.Vector2(0,0)
         self.target_idx = 1
@@ -98,6 +100,8 @@ class Game:
         self.reset_grid()
         self.edit_mode = True
 
+        self.highlight = True
+
         self.round_active = False
         self.round_ended = True
         
@@ -116,9 +120,13 @@ class Game:
     def load_image(self, name):
         path = os.path.join(ASSETS_DIR, name)
         return pygame.image.load(path).convert_alpha()
+
+    def load_world(self, name):
+        path = os.path.join(BGROUND_DIR, name)
+        return pygame.image.load(path).convert_alpha()
     
     def initiate_blocks(self):
-        scale_factor = 2.8
+        scale_factor = 2
         self.tiles = {}
         for root, dir, files in os.walk(ASSETS_DIR):
             all_tiles = sorted(files)
@@ -132,7 +140,8 @@ class Game:
                 self.tiles[name] = self.temp_tile
         self.tree_sprite = self.load_image('tr33.png')
         self.tiles["tree"] = self.temp_tile = pygame.transform.scale(self.tree_sprite,(int(self.tree_sprite.get_width() * scale_factor), int(self.tree_sprite.get_height() * scale_factor)))
-        self.spriteSize = (self.tiles["grass_cube"].get_width(), self.tiles["grass_cube"].get_height())
+        self.spriteSize = (self.tiles["dark_grass"].get_width(), self.tiles["dark_grass"].get_height())
+        self.h_tiles = {name : self.highlight_block(tile) for name, tile in self.tiles.items()}
 
     def run_app(self) -> None:
         pygame.init()
@@ -155,7 +164,7 @@ class Game:
         half_h = h / 4
 
         pivot_x = DEFAULT_WIDTH / 2
-        pivot_y = 125
+        pivot_y = 125 * 2.5
 
         rel_x = self.x - pivot_x
         rel_y = self.y - pivot_y
@@ -174,6 +183,7 @@ class Game:
                 # Hover effect
                 if self.edit_mode and type(self.world_grid[i][j]) == int and self.world_grid[i][j] >= 0 and i == grid_i and j == grid_j:
                     draw_y -= 10
+                    self.highlight = True
                     if self.set_path and self.paths_remaining > 0:
                         if  self.world_grid[i][j] != 1:
                             self.world_grid[i][j] = 1
@@ -182,23 +192,42 @@ class Game:
                         if  self.world_grid[i][j] != 0:
                             self.world_grid[i][j] = 0
                             self.paths_remaining += 1
-                
-                if self.world_grid[i][j] == 0:
-                    self.surface.blit(self.tiles["grass_cube"], (draw_x, draw_y)) # Grass
-                elif self.world_grid[i][j] == 1:
-                    self.surface.blit(self.tiles["path"], (draw_x, draw_y)) # Path
-                elif self.world_grid[i][j] == -1:
-                    valid_path = self.is_grid_valid(self.world_grid, GRID_SIZE)
-                    if valid_path:
-                        self.surface.blit(self.tiles["purple"], (draw_x, draw_y)) # Purple Block
-                    else:
-                        self.surface.blit(self.tiles["grey"], (draw_x, draw_y)) # Grey
-                elif self.world_grid[i][j] == "r2":
-                    self.surface.blit(self.tiles["red"], (draw_x, draw_y)) # Red
-                elif self.world_grid[i][j] == -3:
-                    self.surface.blit(self.tiles["white"], (draw_x, draw_y)) # White
-                elif self.world_grid[i][j] == -9:
-                    self.surface.blit(self.tiles["grass_cube"], (draw_x, draw_y)) # Tree
+                else:
+                    self.highlight = False
+                if self.highlight:
+                    if self.world_grid[i][j] == 0:
+                        self.surface.blit(self.h_tiles["dark_grass"], (draw_x, draw_y)) # Grass
+                    elif self.world_grid[i][j] == 1:
+                        self.surface.blit(self.h_tiles["path"], (draw_x, draw_y)) # Path
+                    elif self.world_grid[i][j] == -1:
+                        valid_path = self.is_grid_valid(self.world_grid, GRID_SIZE)
+                        if valid_path:
+                            self.surface.blit(self.h_tiles["purple"], (draw_x, draw_y)) # Purple Block
+                        else:
+                            self.surface.blit(self.h_tiles["grey"], (draw_x, draw_y)) # Grey
+                    elif self.world_grid[i][j] == "r2":
+                        self.surface.blit(self.h_tiles["red"], (draw_x, draw_y)) # Red
+                    elif self.world_grid[i][j] == -3:
+                        self.surface.blit(self.h_tiles["white"], (draw_x, draw_y)) # White
+                    elif self.world_grid[i][j] == -9:
+                        self.surface.blit(self.h_tiles["dark_grass"], (draw_x, draw_y)) # Tree
+                else:
+                    if self.world_grid[i][j] == 0:
+                        self.surface.blit(self.tiles["dark_grass"], (draw_x, draw_y)) # Grass
+                    elif self.world_grid[i][j] == 1:
+                        self.surface.blit(self.tiles["path"], (draw_x, draw_y)) # Path
+                    elif self.world_grid[i][j] == -1:
+                        valid_path = self.is_grid_valid(self.world_grid, GRID_SIZE)
+                        if valid_path:
+                            self.surface.blit(self.tiles["purple"], (draw_x, draw_y)) # Purple Block
+                        else:
+                            self.surface.blit(self.tiles["grey"], (draw_x, draw_y)) # Grey
+                    elif self.world_grid[i][j] == "r2":
+                        self.surface.blit(self.tiles["red"], (draw_x, draw_y)) # Red
+                    elif self.world_grid[i][j] == -3:
+                        self.surface.blit(self.tiles["white"], (draw_x, draw_y)) # White
+                    elif self.world_grid[i][j] == -9:
+                        self.surface.blit(self.tiles["dark_grass"], (draw_x, draw_y)) # Tree
 
     def map_objects(self): 
         
@@ -208,7 +237,7 @@ class Game:
         half_h = h / 4
 
         pivot_x = DEFAULT_WIDTH / 2
-        pivot_y = 125
+        pivot_y = 125 * 2.5
 
         rel_x = self.x - pivot_x
         rel_y = self.y - pivot_y
@@ -267,6 +296,15 @@ class Game:
 
     def start_round(self):
         pygame.draw.rect(self.surface, (0,0,0), pygame.Rect(100,100,20,20))
+
+    def highlight_block(self, sprite, amount = 80):
+        white_sprite = pygame.Surface(sprite.get_size()).convert_alpha()
+        white_sprite.fill((amount, amount, amount, 0))
+        highlighted_sprite = sprite.copy()
+        highlighted_sprite.blit(white_sprite, (0,0), special_flags = pygame.BLEND_RGB_ADD)
+        return highlighted_sprite
+
+
     
     def draw_UI(self) -> None: 
         self.font = pygame.font.Font(None, 50)
@@ -280,7 +318,7 @@ class Game:
     def get_object_layers(self):
         w, h = self.spriteSize
         half_w, half_h = w / 2, h / 4
-        pivot_x, pivot_y = DEFAULT_WIDTH / 2, 125
+        pivot_x, pivot_y = DEFAULT_WIDTH / 2, 125 * 2.5
 
         rel_x, rel_y = self.x - pivot_x, self.y - pivot_y
         mouse_j = (rel_x / half_w + rel_y / half_h) / 2
@@ -308,6 +346,9 @@ class Game:
 
     def draw_window(self) -> None:
         self.surface.fill(self.bgcolor)
+        self.background = self.load_world("map1.png")
+        self.bg_image = pygame.transform.scale(self.background,(int(self.background.get_width() * 4.3), int(self.background.get_height() * 4.3)))
+        self.surface.blit(self.bg_image, (0, -50))
         self.map_grid()
         self.surface.blit(self.load_image('red.png'), (980, 600))
         self.surface.blit(self.load_image('purple.png'), (1020, 600))
