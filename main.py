@@ -224,16 +224,14 @@ class Game:
                 draw_y = pivot_y + (j + i) * half_h
 
                 # Hover effect
-                if type(self.world_grid[i][j]) == int and self.world_grid[i][j] >= 0 and i == grid_i and j == grid_j:
-                    if self.set_path and self.paths_remaining > 0:
-                        if  self.world_grid[i][j] == -9:
-                            self.tiles["tree"].set_alpha(100)
-                            self.surface.blit(self.tiles["tree"], (draw_x, draw_y - h * 1.52)).set_alpha(100)
-                elif self.world_grid[i][j] == -9:
+                if i == grid_i and j == grid_j:
+                    self.tiles["tree"].set_alpha(100)
+                else:
+                    self.tiles["tree"].set_alpha(255)
+                if self.world_grid[i][j] == -9:
                     self.surface.blit(self.tiles["tree"], (draw_x, draw_y - h * 1.52)) # Tree
 
     def get_path_waypoints(self):
-        # 1. Find the starting -1 (bottom-most row preference)
         start_pos = None
         for i in range(GRID_SIZE - 1, -1, -1):
             for j in range(GRID_SIZE):
@@ -248,7 +246,6 @@ class Game:
         visited = {start_pos}
         current = start_pos
 
-        # 2. Trace the line
         while True:
             curr_i, curr_j = current
             found_next = False
@@ -277,13 +274,42 @@ class Game:
         self.surface.blit(self.mobs_text, (100, 30))
         self.surface.blit(self.points_text, (100, 80))
 
+    def get_object_layers(self):
+        w, h = self.spriteSize
+        half_w, half_h = w / 2, h / 4
+        pivot_x, pivot_y = DEFAULT_WIDTH / 2, 125
+
+        rel_x, rel_y = self.x - pivot_x, self.y - pivot_y
+        mouse_j = (rel_x / half_w + rel_y / half_h) / 2
+        mouse_i = (rel_y / half_h - rel_x / half_w) / 2
+        grid_i, grid_j = int(np.floor(mouse_i)), int(np.floor(mouse_j))
+
+        tree_elements = []
+        for i in range(GRID_SIZE):
+            for j in range(GRID_SIZE):
+                if self.world_grid[i][j] == -9:
+                    draw_x = pivot_x + (j - i) * half_w - half_w
+                    draw_y = pivot_y + (j + i) * half_h
+                    tree_surf = self.tiles["tree"].copy()
+                    if i == grid_i and j == grid_j:
+                        tree_surf.set_alpha(100)
+                    else:
+                        tree_surf.set_alpha(255)
+                    tree_elements.append({
+                        'z': draw_y, 
+                        'type': 'tree', 
+                        'surf': tree_surf, 
+                        'pos': (draw_x, draw_y - h * 1.52)
+                    })
+        return tree_elements
+
     def draw_window(self) -> None:
         self.surface.fill(self.bgcolor)
-        self.map_grid()   
-        self.font = pygame.font.Font(None, 50)
-        self.surface.blit(self.path_icon, (50, 640))
-        self.text = self.font.render(f'Remaining: {self.paths_remaining}', True, (0, 0, 0))
-        self.surface.blit(self.text, (120, 650))
+        self.map_grid()
+
+        layer_queue = []
+        layer_queue.extend(self.get_object_layers())
+
         if self.round_active:
             finished_mobs = [m for m in self.mobs if m.at_end]
             for _ in finished_mobs:
@@ -292,11 +318,27 @@ class Game:
             self.mobs = [m for m in self.mobs if not m.at_end]
             for mob in self.mobs:
                 mob.update()
-                mob.draw(self.surface)
-                    
+                layer_queue.append({
+                    'z': mob.pos.y, 
+                    'type': 'mob', 
+                    'obj': mob
+                })
 
-        #self.surface.blit(self.tree_sprite, (100, 100))
-        self.map_objects()
+        # Sorts by furthest from screen to closest to screen
+        layer_queue.sort(key=lambda item: item['z'])
+
+        # Draw based off order
+        for item in layer_queue:
+            if item['type'] == 'tree':
+                self.surface.blit(item['surf'], item['pos'])
+            elif item['type'] == 'mob':
+                item['obj'].draw(self.surface)
+
+        self.font = pygame.font.Font(None, 50)
+        self.surface.blit(self.path_icon, (50, 640))
+        self.text = self.font.render(f'Remaining: {self.paths_remaining}', True, (0, 0, 0))
+        self.surface.blit(self.text, (120, 650))
+        
         self.draw_UI()
         pygame.display.update()
 
