@@ -15,7 +15,7 @@ ASSETS_DIR = os.path.join(os.path.dirname(__file__), 'tiles')
 
 rgb = tuple[int,int,int]
 num = random.randint(1,5)
-PRESET_WORLD = maps.levels[num]
+PRESET_WORLD = maps.levels[1]
 
 #SPRITES_DIR = os.path.join(ASSETS_DIR, 'sprites')
 
@@ -116,18 +116,20 @@ class Game:
     
     def initiate_blocks(self):
         scale_factor = 2.8
-        self.tiles = []
+        self.tiles = {}
         for root, dir, files in os.walk(ASSETS_DIR):
             all_tiles = sorted(files)
             for tile in all_tiles:
+                name = tile.split(".")[0]
                 if tile == "path.png":
                     self.path_icon = self.load_image(tile)
                     self.path_icon = pygame.transform.scale(self.path_icon,(int(self.path_icon.get_width() * 1.5), int(self.path_icon.get_height() * 1.5)))
                 temp_sprite = self.load_image(tile)
                 self.temp_tile = pygame.transform.scale(temp_sprite,(int(temp_sprite.get_width() * scale_factor), int(temp_sprite.get_height() * scale_factor)))
-                self.tiles.append(self.temp_tile)
-        #self.tree_sprite = pygame.image.load('tree.png').convert_alpha()
-        self.spriteSize = (self.tiles[0].get_width(), self.tiles[0].get_height())
+                self.tiles[name] = self.temp_tile
+        self.tree_sprite = self.load_image('tr33.png')
+        self.tiles["tree"] = self.temp_tile = pygame.transform.scale(self.tree_sprite,(int(self.tree_sprite.get_width() * scale_factor), int(self.tree_sprite.get_height() * scale_factor)))
+        self.spriteSize = (self.tiles["grass_cube"].get_width(), self.tiles["grass_cube"].get_height())
 
     def run_app(self) -> None:
         pygame.init()
@@ -179,19 +181,54 @@ class Game:
                             self.paths_remaining += 1
                 
                 if self.world_grid[i][j] == 0:
-                    self.surface.blit(self.tiles[0], (draw_x, draw_y)) # Grass
+                    self.surface.blit(self.tiles["grass_cube"], (draw_x, draw_y)) # Grass
                 elif self.world_grid[i][j] == 1:
-                    self.surface.blit(self.tiles[2], (draw_x, draw_y)) # Path
+                    self.surface.blit(self.tiles["path"], (draw_x, draw_y)) # Path
                 elif self.world_grid[i][j] == -1:
                     valid_path = self.is_grid_valid(self.world_grid, GRID_SIZE)
                     if valid_path:
-                        self.surface.blit(self.tiles[3], (draw_x, draw_y)) # Purple Block
+                        self.surface.blit(self.tiles["purple"], (draw_x, draw_y)) # Purple Block
                     else:
-                        self.surface.blit(self.tiles[1], (draw_x, draw_y)) # Grey
+                        self.surface.blit(self.tiles["grey"], (draw_x, draw_y)) # Grey
                 elif self.world_grid[i][j] == "r2":
-                    self.surface.blit(self.tiles[4], (draw_x, draw_y)) # Red
+                    self.surface.blit(self.tiles["red"], (draw_x, draw_y)) # Red
                 elif self.world_grid[i][j] == -3:
-                    self.surface.blit(self.tiles[6], (draw_x, draw_y)) # White
+                    self.surface.blit(self.tiles["white"], (draw_x, draw_y)) # White
+                elif self.world_grid[i][j] == -9:
+                    self.surface.blit(self.tiles["grass_cube"], (draw_x, draw_y)) # Tree
+
+    def map_objects(self): 
+        
+        w, h = self.spriteSize
+
+        half_w = w / 2
+        half_h = h / 4
+
+        pivot_x = DEFAULT_WIDTH / 2
+        pivot_y = 125
+
+        rel_x = self.x - pivot_x
+        rel_y = self.y - pivot_y
+
+        mouse_j = (rel_x / half_w + rel_y / half_h) / 2
+        mouse_i = (rel_y / half_h - rel_x / half_w) / 2
+
+        grid_i, grid_j = int(np.floor(mouse_i)), int(np.floor(mouse_j))
+
+        for i in range(GRID_SIZE):
+            for j in range(GRID_SIZE):
+
+                draw_x = pivot_x + (j - i) * half_w - half_w
+                draw_y = pivot_y + (j + i) * half_h
+
+                # Hover effect
+                if type(self.world_grid[i][j]) == int and self.world_grid[i][j] >= 0 and i == grid_i and j == grid_j:
+                    if self.set_path and self.paths_remaining > 0:
+                        if  self.world_grid[i][j] == -9:
+                            self.tiles["tree"].set_alpha(100)
+                            self.surface.blit(self.tiles["tree"], (draw_x, draw_y - h * 1.52)).set_alpha(100)
+                elif self.world_grid[i][j] == -9:
+                    self.surface.blit(self.tiles["tree"], (draw_x, draw_y - h * 1.52)) # Tree
 
     def get_path_waypoints(self):
         # 1. Find the starting -1 (bottom-most row preference)
@@ -257,6 +294,7 @@ class Game:
                     
 
         #self.surface.blit(self.tree_sprite, (100, 100))
+        self.map_objects()
         self.draw_UI()
         pygame.display.update()
 
