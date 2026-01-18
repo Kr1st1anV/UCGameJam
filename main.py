@@ -11,8 +11,6 @@ GRID_SIZE = 12
 MAX_TILES = 35
 ASSETS_DIR = os.path.join(os.path.dirname(__file__), 'tiles')
 
-ACTIVE_ROUND = False
-
 rgb = tuple[int,int,int]
 
 #SPRITES_DIR = os.path.join(ASSETS_DIR, 'sprites')
@@ -57,7 +55,7 @@ class Mob:
                 self.pos = pygame.Vector2(target)
                 self.target_idx += 1
         else:
-            self.at_end = True
+            self.at_end = True  
 
     def draw(self, surface):
         # Draw a small red square as the 'runner'
@@ -90,6 +88,8 @@ class Game:
         self.paths_remaining = MAX_TILES
         self.reset_grid()
         self.edit_mode = True
+
+        self.round_active = False
         
         self.SPAWN_MOB_EVENT = pygame.USEREVENT + 1
         self.mobs = [] # List to track all active mobs
@@ -238,14 +238,15 @@ class Game:
         self.surface.blit(self.path_icon, (50, 640))
         self.text = self.font.render(f'Remaining: {self.paths_remaining}', True, (0, 0, 0))
         self.surface.blit(self.text, (120, 650))
-        if ACTIVE_ROUND:
+        if self.round_active:
             self.points = 0
-            for mob in self.mobs:
+            for i, mob in self.mobs:
                 if not mob.at_end:
                     mob.update()
                     mob.draw(self.surface)
                 else:
                     self.points += 1
+                    
 
         #self.surface.blit(self.tree_sprite, (100, 100))
         self.draw_UI()
@@ -336,11 +337,11 @@ class Game:
                     if event.key == pygame.K_r:
                         self.reset_grid()
                         self.edit_mode = True
-                        ACTIVE_ROUND = False
+                        self.round_active = False
                     if event.key == pygame.K_SPACE:
-                        if self.is_grid_valid(self.world_grid, GRID_SIZE) and not ACTIVE_ROUND:
+                        if self.is_grid_valid(self.world_grid, GRID_SIZE) and not self.round_active:
                             self.edit_mode = False
-                            ACTIVE_ROUND = True
+                            self.round_active = True
                             self.mobs_to_spawn = 10 
                             # Set timer to trigger SPAWN_MOB_EVENT every 1000ms (1 second)
                             pygame.time.set_timer(self.SPAWN_MOB_EVENT, 1000)
