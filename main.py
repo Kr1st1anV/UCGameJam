@@ -3,6 +3,8 @@ import sys
 import pygame
 import copy
 import numpy as np
+import maps
+import random
 
 DEFAULT_BGCOLOR = (137, 207, 240)
 DEFAULT_WIDTH   = 1280
@@ -14,9 +16,12 @@ ASSETS_DIR = os.path.join(os.path.dirname(__file__), 'tiles')
 ACTIVE_ROUND = False
 
 rgb = tuple[int,int,int]
+num = random.randint(1,5)
+PRESET_WORLD = maps.levels[num]
 
 #SPRITES_DIR = os.path.join(ASSETS_DIR, 'sprites')
 
+'''
 PRESET_WORLD = [[0, 0, 0, 0, 0, 0, 0, 0, -1, 0, 0, 0], 
                 [0, 0, 0, 0, 0, 0, "r2", 0, 0, 0, 0, 0], 
                 [0, 0, 0, 0, 0, 0, 0, 0, "r2", 0, 0, 0], 
@@ -29,6 +34,7 @@ PRESET_WORLD = [[0, 0, 0, 0, 0, 0, 0, 0, -1, 0, 0, 0],
                 [0, 0, 0, 0, 0, "r2", 0, 0, 0, 0, 0, 0], 
                 [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 
                 [0, 0, 0, -1, 0, 0, 0, 0, 0, 0, 0, 0]]
+'''
 
 class Mob:
     def __init__(self, grid_coords, sprite_size, pivot_x, pivot_y):
