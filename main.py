@@ -302,8 +302,8 @@ class Game:
         self.mobs_text = self.font.render(f'Mobs: {self.mobs_to_spawn}', True, (0, 0, 0))
         self.points_text = self.font.render(f'Points: {self.points}', True, (0, 0, 0))
         self.units_text = self.font.render(f'Units:', True, (0, 0, 0))
-        self.surface.blit(self.mobs_text, (20, 30))
-        self.surface.blit(self.points_text, (20, 80))
+        self.surface.blit(self.mobs_text, (750, 30))
+        self.surface.blit(self.points_text, (750, 80))
         self.surface.blit(self.units_text, (1130, 550))
 
     def get_object_layers(self):
@@ -361,9 +361,9 @@ class Game:
         self.tree_life = self.load_world("tree_of_life.png")
         self.tree_life_img = pygame.transform.scale(self.tree_life,(int(self.tree_life.get_width() * 1), int(self.tree_life.get_height() * 1)))
         self.surface.blit(self.tree_life_img, (250, 50))
-        self.surface.blit(self.load_image('red.png'), (1130, 600))
-        self.surface.blit(self.load_image('purple.png'), (1170, 600))
-        self.surface.blit(self.load_image('water.png'), (1210, 600))
+        self.surface.blit(self.load_image('red.png'), (800, 600))
+        self.surface.blit(self.load_image('purple.png'), (840, 600))
+        self.surface.blit(self.load_image('water.png'), (880, 600))
 
         layer_queue = []
         layer_queue.extend(self.get_object_layers())
@@ -397,9 +397,9 @@ class Game:
         self.font = pygame.font.Font(None, 35)
         #self.surface.blit(self.path_icon, (50, 640))
         self.text = self.font.render(f'Tiles', True, (0, 0, 0))
-        self.surface.blit(self.text, (20, 550))
+        self.surface.blit(self.text, (750, 450))
         self.text = self.font.render(f'Remaining: {self.paths_remaining}', True, (0, 0, 0))
-        self.surface.blit(self.text, (20, 585))
+        self.surface.blit(self.text, (750, 485))
         
         self.draw_UI()
         pygame.display.update()
