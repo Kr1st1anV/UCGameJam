@@ -308,10 +308,10 @@ class Game:
 
     def draw_window(self) -> None:
         self.surface.fill(self.bgcolor)
+        self.map_grid()
         self.surface.blit(self.load_image('red.png'), (980, 600))
         self.surface.blit(self.load_image('purple.png'), (1020, 600))
         self.surface.blit(self.load_image('water.png'), (1060, 600))
-        self.map_grid()
 
         layer_queue = []
         layer_queue.extend(self.get_object_layers())
