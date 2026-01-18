@@ -39,6 +39,8 @@ class Mob:
         self.waypoints = []
         w, h = sprite_size
         half_w, half_h = w / 2, h / 4
+        self.mobtype = [(200, 50, 50),(93, 63, 211),(255, 192, 0)]
+        self.randmob = random.randint(0, len(self.mobtype) - 1)
         
         # Convert grid indices to isometric screen coordinates
         for i, j in grid_coords:
@@ -67,7 +69,7 @@ class Mob:
         # Draw a small red square as the 'runner'
         runner_rect = pygame.Rect(0, 0, 24, 24)
         runner_rect.center = (self.pos.x, self.pos.y)
-        pygame.draw.rect(surface, (200, 50, 50), runner_rect)
+        pygame.draw.rect(surface, self.mobtype[self.randmob], runner_rect)
         pygame.draw.rect(surface, (255, 255, 255), runner_rect, 2)                
 
 class Game:
@@ -345,6 +347,7 @@ class Game:
                         self.reset_grid()
                         self.edit_mode = True
                         self.round_active = False
+########################################################################################################################################
                     if event.key == pygame.K_SPACE:
                         if self.is_grid_valid(self.world_grid, GRID_SIZE) and not self.round_active and self.round_ended:
                             self.edit_mode = False
@@ -353,6 +356,7 @@ class Game:
                             self.mobs_to_spawn = 10 
                             # Set timer to trigger SPAWN_MOB_EVENT every 1000ms (1 second)
                             pygame.time.set_timer(self.SPAWN_MOB_EVENT, 1000)
+########################################################################################################################################
                 elif event.type == self.SPAWN_MOB_EVENT:
                     self.round_ended = False
                     if self.mobs_to_spawn > 0:
