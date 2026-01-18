@@ -11,11 +11,13 @@ GRID_SIZE = 12
 MAX_TILES = 35
 ASSETS_DIR = os.path.join(os.path.dirname(__file__), 'tiles')
 
+ACTIVE_ROUND = False
+
 rgb = tuple[int,int,int]
 
 #SPRITES_DIR = os.path.join(ASSETS_DIR, 'sprites')
 
-PRRSET_WORLD = [[0, 0, 0, 0, 0, 0, 0, 0, -1, 0, 0, 0], 
+PRESET_WORLD = [[0, 0, 0, 0, 0, 0, 0, 0, -1, 0, 0, 0], 
                 [0, 0, 0, 0, 0, 0, "r2", 0, 0, 0, 0, 0], 
                 [0, 0, 0, 0, 0, 0, 0, 0, "r2", 0, 0, 0], 
                 [0, 0, 0, "r2", 0, 0, 0, 0, 0, 0, 0, 0], 
@@ -87,7 +89,6 @@ class Game:
         self.rm_path = False
         self.paths_remaining = MAX_TILES
         self.reset_grid()
-        self.round_active = False
         self.edit_mode = True
         
         self.SPAWN_MOB_EVENT = pygame.USEREVENT + 1
@@ -111,8 +112,10 @@ class Game:
         self.tiles = []
         for root, dir, files in os.walk(ASSETS_DIR):
             all_tiles = sorted(files)
-            print(all_tiles)
             for tile in all_tiles:
+                if tile == "path.png":
+                    self.path_icon = self.load_image(tile)
+                    self.path_icon = pygame.transform.scale(self.path_icon,(int(self.path_icon.get_width() * 1.5), int(self.path_icon.get_height() * 1.5)))
                 temp_sprite = self.load_image(tile)
                 self.temp_tile = pygame.transform.scale(temp_sprite,(int(temp_sprite.get_width() * scale_factor), int(temp_sprite.get_height() * scale_factor)))
                 self.tiles.append(self.temp_tile)
@@ -232,10 +235,10 @@ class Game:
         self.surface.fill(self.bgcolor)
         self.map_grid()   
         self.font = pygame.font.Font(None, 50)
-        self.surface.blit(self.tiles[0], (50, 650))
+        self.surface.blit(self.path_icon, (50, 640))
         self.text = self.font.render(f'Remaining: {self.paths_remaining}', True, (0, 0, 0))
-        self.surface.blit(self.text, (100, 650))
-        if self.round_active:
+        self.surface.blit(self.text, (120, 650))
+        if ACTIVE_ROUND:
             self.points = 0
             for mob in self.mobs:
                 if not mob.at_end:
@@ -307,10 +310,11 @@ class Game:
     
     def reset_grid(self):
         self.paths_remaining = MAX_TILES
-        self.world_grid = copy.deepcopy(PRRSET_WORLD)
+        self.world_grid = copy.deepcopy(PRESET_WORLD)
 
     def run_event_loop(self) -> None:
         while True:
+            print(self.mobs)
             events = pygame.event.get()
             ### FOR WAVES SYSTEM
             for event in events:
@@ -332,11 +336,11 @@ class Game:
                     if event.key == pygame.K_r:
                         self.reset_grid()
                         self.edit_mode = True
-                        self.round_active = False
+                        ACTIVE_ROUND = False
                     if event.key == pygame.K_SPACE:
-                        if self.is_grid_valid(self.world_grid, GRID_SIZE) and not self.round_active:
+                        if self.is_grid_valid(self.world_grid, GRID_SIZE) and not ACTIVE_ROUND:
                             self.edit_mode = False
-                            self.round_active = True
+                            ACTIVE_ROUND = True
                             self.mobs_to_spawn = 10 
                             # Set timer to trigger SPAWN_MOB_EVENT every 1000ms (1 second)
                             pygame.time.set_timer(self.SPAWN_MOB_EVENT, 1000)
