@@ -96,6 +96,7 @@ class Game:
         self.edit_mode = True
 
         self.round_active = False
+        self.round_ended = True
         
         self.SPAWN_MOB_EVENT = pygame.USEREVENT + 1
         self.mobs = [] # List to track all active mobs
@@ -245,13 +246,14 @@ class Game:
         self.text = self.font.render(f'Remaining: {self.paths_remaining}', True, (0, 0, 0))
         self.surface.blit(self.text, (120, 650))
         if self.round_active:
-            self.points = 0
-            for i, mob in self.mobs:
-                if not mob.at_end:
-                    mob.update()
-                    mob.draw(self.surface)
-                else:
-                    self.points += 1
+            finished_mobs = [m for m in self.mobs if m.at_end]
+            for _ in finished_mobs:
+                self.points += 1
+            
+            self.mobs = [m for m in self.mobs if not m.at_end]
+            for mob in self.mobs:
+                mob.update()
+                mob.draw(self.surface)
                     
 
         #self.surface.blit(self.tree_sprite, (100, 100))
@@ -321,7 +323,6 @@ class Game:
 
     def run_event_loop(self) -> None:
         while True:
-            print(self.mobs)
             events = pygame.event.get()
             ### FOR WAVES SYSTEM
             for event in events:
@@ -345,13 +346,15 @@ class Game:
                         self.edit_mode = True
                         self.round_active = False
                     if event.key == pygame.K_SPACE:
-                        if self.is_grid_valid(self.world_grid, GRID_SIZE) and not self.round_active:
+                        if self.is_grid_valid(self.world_grid, GRID_SIZE) and not self.round_active and self.round_ended:
                             self.edit_mode = False
                             self.round_active = True
+                            self.round_ended = False
                             self.mobs_to_spawn = 10 
                             # Set timer to trigger SPAWN_MOB_EVENT every 1000ms (1 second)
                             pygame.time.set_timer(self.SPAWN_MOB_EVENT, 1000)
                 elif event.type == self.SPAWN_MOB_EVENT:
+                    self.round_ended = False
                     if self.mobs_to_spawn > 0:
                         pts = self.get_path_waypoints()
                         new_mob = Mob(pts, self.spriteSize, DEFAULT_WIDTH/2, 50)
@@ -361,6 +364,12 @@ class Game:
                         pygame.time.set_timer(self.SPAWN_MOB_EVENT, 0)
                 elif event.type == pygame.KEYUP:
                     pass
+            if self.round_active and self.mobs_to_spawn == 0 and len(self.mobs) == 0:
+                self.round_active = False
+                self.round_ended = True
+                self.edit_mode = True
+                # Optional: self.paths_remaining = MAX_TILES # Reset tiles for next round?
+
             self.draw_window()
             self.clock.tick(60)
 
