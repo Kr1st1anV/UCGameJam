@@ -23,15 +23,14 @@ num = random.randint(1,5)
 
 PRESET_WORLD = [[0, 0, 0, 0, 0, 0, 0, 0, -1, 0], 
                 [0, 0, 0, 0, 0, 0, "r2", 0, 0, 0], 
-                [0, -9, 0, 0, 0, 0, 0, 0, "r2", 0], 
+                [0, 0, 0, 0, 0, 0, 0, 0, "r2", 0], 
                 [0, 0, 0, "r2", 0, 0, 0, 0, 0, 0], 
                 [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 
-                [0, 0, 0, 0, 0, 0, -9, 0, 0, 0, 0], 
+                [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 
                 [0, 0, "r2", 0, 0, 0, 0, 0, 0, 0], 
                 [0, 0, 0, 0, 0, 0, 0, "r2", 0, 0], 
-                [0, 0, 0, 0, 0, -9, 0, 0, 0, 0], 
+                [0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 
                 [0, 0, 0, -1, 0, 0, 0, 0, 0, 0]]
-
 
 
 class Mob:
@@ -306,13 +305,13 @@ class Game:
 
     
     def draw_UI(self) -> None: 
-        self.font = pygame.font.Font(None, 35)
+        self.font = pygame.font.Font(None, 50)
         self.mobs_text = self.font.render(f'Mobs: {self.mobs_to_spawn}', True, (0, 0, 0))
         self.points_text = self.font.render(f'Points: {self.points}', True, (0, 0, 0))
         self.units_text = self.font.render(f'Units:', True, (0, 0, 0))
         self.surface.blit(self.mobs_text, (20, 30))
         self.surface.blit(self.points_text, (20, 80))
-        self.surface.blit(self.units_text, (1130, 550))
+        self.surface.blit(self.units_text, (980, 550))
 
     def get_object_layers(self):
         w, h = self.spriteSize
@@ -349,15 +348,15 @@ class Game:
         self.bg_image = pygame.transform.scale(self.background,(int(self.background.get_width() * 1), int(self.background.get_height() * 1)))
         self.surface.blit(self.bg_image, (200, -50))
         self.island = self.load_world("island.png")
-        self.island_image = pygame.transform.scale(self.island,(int(self.island.get_width() * 1.1), int(self.island.get_height() * 1.1)))
-        self.surface.blit(self.island_image, (150, -50))
+        self.island_image = pygame.transform.scale(self.island,(int(self.island.get_width() * 1), int(self.island.get_height() * 1)))
+        self.surface.blit(self.island_image, (200, 0))
         self.map_grid()
         self.tree_life = self.load_world("tree_of_life.png")
         self.tree_life_img = pygame.transform.scale(self.tree_life,(int(self.tree_life.get_width() * 1), int(self.tree_life.get_height() * 1)))
-        self.surface.blit(self.tree_life_img, (590, 25))
-        self.surface.blit(self.load_image('red.png'), (1130, 600))
-        self.surface.blit(self.load_image('purple.png'), (1170, 600))
-        self.surface.blit(self.load_image('water.png'), (1210, 600))
+        self.surface.blit(self.tree_life_img, (590, 75))
+        self.surface.blit(self.load_image('red.png'), (980, 600))
+        self.surface.blit(self.load_image('purple.png'), (1020, 600))
+        self.surface.blit(self.load_image('water.png'), (1060, 600))
 
         layer_queue = []
         layer_queue.extend(self.get_object_layers())
@@ -386,12 +385,10 @@ class Game:
             elif item['type'] == 'mob':
                 item['obj'].draw(self.surface)
 
-        self.font = pygame.font.Font(None, 35)
-        #self.surface.blit(self.path_icon, (50, 640))
-        self.text = self.font.render(f'Tiles', True, (0, 0, 0))
-        self.surface.blit(self.text, (20, 550))
+        self.font = pygame.font.Font(None, 50)
+        self.surface.blit(self.path_icon, (50, 640))
         self.text = self.font.render(f'Remaining: {self.paths_remaining}', True, (0, 0, 0))
-        self.surface.blit(self.text, (20, 585))
+        self.surface.blit(self.text, (20, 650))
         
         self.draw_UI()
         pygame.display.update()
