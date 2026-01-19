@@ -36,7 +36,7 @@ PRESET_WORLD = [[0, -1, 0, 0, "l1", 0, 0, 0, 0, 0],
                 [0, 0, 0, 0, 0, 0, 0, 0, 0, -1]]
 '''
 class Mob:
-    def __init__(self, grid_coords, sprite_size, pivot_x, pivot_y):
+    def __init__(self, grid_coords, sprite_size, pivot_x, pivot_y, mob_type=None):
         self.health = 10
         self.waypoints = []
         w, h = sprite_size
@@ -51,8 +51,10 @@ class Mob:
                         ['beetle_0001.png', 'beetle_0002.png', 'beetle_0003.png', 'beetle_0004.png']]
         self.mob_health_values = [20, 10, 50, 100, 120]
         self.mob_dmg = [6, 2, 4, 3, 3]
-
-        self.randmob = random.randint(0, len(self.mobtype) - 1)
+        if mob_type is not None:
+            self.randmob = mob_type
+        else:
+            self.randmob = random.randint(0, len(self.mobtype) - 1)
         self.health = self.mob_health_values[self.randmob]
         self.dmg = self.mob_dmg[self.randmob]
         print(f"Spawned mob type {self.randmob} with {self.health} health")
@@ -146,6 +148,7 @@ class Game:
         
         self.SPAWN_MOB_EVENT = pygame.USEREVENT + 1
         self.mobs = [] # List to track all active mobs
+        self.selected_mob_type = 0
         self.mobs_to_spawn = 0
         self.points = 0
         pygame.font.init()        
@@ -706,7 +709,16 @@ class Game:
                                 self.reset_grid()
                                 self.edit_mode = True
                                 self.round_active = False
-
+                        if event.key == pygame.K_1:
+                            self.selected_mob_type = 0
+                        if event.key == pygame.K_2:
+                            self.selected_mob_type = 1
+                        if event.key == pygame.K_3:
+                            self.selected_mob_type = 2
+                        if event.key == pygame.K_4:
+                            self.selected_mob_type = 3
+                        if event.key == pygame.K_5:
+                            self.selected_mob_type = 4
                         if event.key == pygame.K_SPACE:
                             if self.is_grid_valid(self.world_grid, GRID_SIZE) and not self.round_active and self.round_ended:
                                 self.edit_mode = False
@@ -720,7 +732,7 @@ class Game:
                         self.round_ended = False
                         if self.mobs_to_spawn > 0:
                             pts = self.get_path_waypoints()
-                            new_mob = Mob(pts, self.spriteSize, DEFAULT_WIDTH/2, 50)
+                            new_mob = Mob(pts, self.spriteSize, DEFAULT_WIDTH/2, 50, self.selected_mob_type)
                             self.mobs.append(new_mob)
                             self.mobs_to_spawn -= 1
                         else:
