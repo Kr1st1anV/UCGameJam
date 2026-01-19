@@ -48,7 +48,14 @@ class Mob:
                         ['butterfly_0001.png', 'butterfly_0002.png', 'butterfly_0003.png', 'butterfly_0004.png'],
                         ['snail idle_0001.png', 'snail idle_0002.png', 'snail idle_0003.png', 'snail idle_0004.png'],
                         ['beetle_0001.png', 'beetle_0002.png', 'beetle_0003.png', 'beetle_0004.png']]
+        self.mob_health_values = [20, 10, 50, 100, 120]
+        self.mob_dmg = [6, 2, 4, 3, 3]
+
         self.randmob = random.randint(0, len(self.mobtype) - 1)
+        self.health = self.mob_health_values[self.randmob]
+        self.dmg = self.mob_dmg[self.randmob]
+        print(f"Spawned mob type {self.randmob} with {self.health} health")
+        print(f"Spawned mob type {self.randmob} with {self.dmg} dmg")
 
         self.mobframes = [self.load_mob(frame) for frame in self.mobtype[self.randmob]]
 
