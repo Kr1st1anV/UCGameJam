@@ -193,7 +193,7 @@ class Game:
             self.health_frames.append(img)
             
         # Initialize the tree health variable
-        self.tree_health = 100
+        self.tree_health = 2500
     
     def initiate_blocks(self):
         scale_factor = 1.5
@@ -208,8 +208,6 @@ class Game:
                 temp_sprite = self.load_image(tile)
                 self.temp_tile = pygame.transform.scale(temp_sprite,(int(temp_sprite.get_width() * scale_factor), int(temp_sprite.get_height() * scale_factor)))
                 self.tiles[name] = self.temp_tile
-        self.tree_sprite = self.load_image('tree.png')
-        self.tiles["tree"] = self.temp_tile = pygame.transform.scale(self.tree_sprite,(int(self.tree_sprite.get_width() * 2.5), int(self.tree_sprite.get_height() *2.5)))
         self.spriteSize = (self.tiles["dark_grass"].get_width(), self.tiles["dark_grass"].get_height())
         self.h_tiles = {name : self.highlight_block(tile) for name, tile in self.tiles.items()}
 
@@ -218,7 +216,7 @@ class Game:
         self.tower_data = {} # Stores frames: self.tower_data["bee"]["idle"] = [...]
         self.tower_states = {} # Stores cooldowns: self.tower_states[(i, j)] = last_attack_time
 
-        for t_type in ["bee", "ladybug"]:
+        for t_type in ["bee", "ladybug", "bush", "tree"]:
             self.tower_data[t_type] = {"idle": [], "attack": []}
             for state in ["idle", "attack"]:
                 folder = os.path.join(TOWERS_DIR, t_type, state) # e.g., towers/bee/attack/
@@ -346,7 +344,7 @@ class Game:
                     elif self.world_grid[i][j] == -3:
                         self.surface.blit(self.h_tiles["white"], (draw_x, draw_y)) # White
                     elif self.world_grid[i][j] == -9:
-                        self.surface.blit(self.h_tiles["dark_grass"], (draw_x, draw_y)) # Tree
+                        self.surface.blit(self.h_tiles["red"], (draw_x, draw_y)) # Tree
                 else:
                     if self.world_grid[i][j] == 0:
                         self.surface.blit(self.tiles["dark_grass"], (draw_x, draw_y)) # Grass
@@ -364,7 +362,7 @@ class Game:
                     elif self.world_grid[i][j] == -3:
                         self.surface.blit(self.tiles["white"], (draw_x, draw_y)) # White
                     elif self.world_grid[i][j] == -9:
-                        self.surface.blit(self.tiles["dark_grass"], (draw_x, draw_y)) # Tree
+                        self.surface.blit(self.tiles["red"], (draw_x, draw_y)) # Tree
                     elif self.world_grid[i][j] == -8:
                         self.surface.blit(self.tiles["dark_grass"], (draw_x, draw_y)) # Tree
 
@@ -587,13 +585,18 @@ class Game:
                         if state_info["flip"]:
                             surf = pygame.transform.flip(surf, True, False)
 
+                        if i == grid_i and j == grid_j:
+                            surf.set_alpha(100)
+                        else:
+                            surf.set_alpha(255)
+
                         tree_elements.append({
                             'z': draw_y, 
                             'type': t_type, 
                             'surf': surf, 
                             'pos': (draw_x, (draw_y - h * 1.2) + bobbing_offset)
                         })
-                if self.world_grid[i][j] == "l1":
+                elif self.world_grid[i][j] == "l1":
                     draw_x = pivot_x + (j - i) * half_w - half_w
                     draw_y = pivot_y + (j + i) * half_h
                     state_info = self.tower_states.get((i, j), {"frame": 0, "status": "idle", "flip": False})
@@ -608,6 +611,11 @@ class Game:
                         if state_info["flip"]:
                             surf = pygame.transform.flip(surf, True, False)
 
+                        if i == grid_i and j == grid_j:
+                            surf.set_alpha(100)
+                        else:
+                            surf.set_alpha(255)
+
                         tree_elements.append({
                             'z': draw_y, 
                             'type': t_type, 
@@ -618,30 +626,68 @@ class Game:
                 elif self.world_grid[i][j] == -9:
                     draw_x = pivot_x + (j - i) * half_w - half_w
                     draw_y = pivot_y + (j + i) * half_h
-                    tree_surf = self.tiles["tree"].copy()
-                    if i == grid_i and j == grid_j:
-                        tree_surf.set_alpha(100)
-                    else:
-                        tree_surf.set_alpha(255)
-                    tree_elements.append({
-                        'z': draw_y, 
-                        'type': 'tree', 
-                        'surf': tree_surf, 
-                        'pos': (draw_x - 10, draw_y - h * 1.1)
-                    })
+                    state_info = self.tower_states.get((i, j), {"frame": 0, "status": "idle", "flip": False})
+                    t_type = "tree"
+                    frames_list = self.tower_data[t_type][state_info["status"]]
+                    
+                    if len(frames_list) > 0:
+                        frame_idx = int(state_info["frame"]) % len(frames_list)
+                        surf = frames_list[frame_idx]
+
+                        surf = pygame.transform.scale(surf,(int(surf.get_width() * 2), int(surf.get_height() * 2)))
+                        
+                        # Apply the flip based on the tracking logic
+                        if state_info["flip"]:
+                            surf = pygame.transform.flip(surf, True, False)
+
+                        if i == grid_i and j == grid_j:
+                            surf.set_alpha(100)
+                        else:
+                            surf.set_alpha(255)
+
+                        tree_elements.append({
+                            'z': draw_y, 
+                            'type': t_type, 
+                            'surf': surf, 
+                            'pos': (draw_x - w * 0.5, (draw_y - h * 1.3))
+                        })
+
+                elif self.world_grid[i][j] == -8:
+                    draw_x = pivot_x + (j - i) * half_w - half_w
+                    draw_y = pivot_y + (j + i) * half_h
+                    state_info = self.tower_states.get((i, j), {"frame": 0, "status": "idle", "flip": False})
+                    t_type = "bush"
+                    frames_list = self.tower_data[t_type][state_info["status"]]
+                    
+                    if len(frames_list) > 0:
+                        frame_idx = int(state_info["frame"]) % len(frames_list)
+                        surf = frames_list[frame_idx]
+                        
+                        # Apply the flip based on the tracking logic
+                        if state_info["flip"]:
+                            surf = pygame.transform.flip(surf, True, False)
+
+                        if i == grid_i and j == grid_j:
+                            surf.set_alpha(100)
+                        else:
+                            surf.set_alpha(255)
+
+                        tree_elements.append({
+                            'z': draw_y, 
+                            'type': t_type, 
+                            'surf': surf, 
+                            'pos': (draw_x + 5, draw_y - h * 0.35)
+                        })
                 # elif self.world_grid[i][j] == -8:
                 #     draw_x = pivot_x + (j - i) * half_w - half_w
                 #     draw_y = pivot_y + (j + i) * half_h
                 #     tree_surf = self.towers["bush"].copy()
-                #     if i == grid_i and j == grid_j:
-                #         tree_surf.set_alpha(100)
-                #     else:
-                #         tree_surf.set_alpha(255)
+                    
                 #     tree_elements.append({
                 #         'z': draw_y, 
                 #         'type': 'bush', 
                 #         'surf': tree_surf, 
-                #         'pos': (draw_x + 5, draw_y - h * 0.35)
+                #         
                 #     })
         return tree_elements
     
