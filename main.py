@@ -472,7 +472,7 @@ class Game:
         scroll = self.load_world('emptyscroll.png')
         scale_fix_scroll = pygame.transform.scale(scroll, (int(scroll.get_width() * 0.35), int(scroll.get_height() * 0.35)))
 
-        self.font = pygame.font.Font("fonts\Dico.ttf", 35)
+        self.font = pygame.font.Font(os.path.join(os.path.join(os.path.dirname(__file__), 'fonts'), "Dico.ttf"), 35)
         romanNumeral = self.intToRoman(self.wave)
         self.wave_text = self.font.render("Wave: " + romanNumeral, True, (0, 0, 0))
         self.mobs_text = self.font.render(f'Mobs: {self.mobs_to_spawn}', True, (0, 0, 0))
