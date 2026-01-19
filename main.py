@@ -201,7 +201,7 @@ class Game:
                     self.ladybug_frames.append(scaled_sprite)
 
         self.bush_sprite = self.load_towers('bush.png')
-        self.towers["bush"] = pygame.transform.scale(self.bush_sprite, (int(self.bush_sprite.get_width() * 1.2), int(self.bush_sprite.get_height() * 1.2)))
+        self.towers["bush"] = pygame.transform.scale(self.bush_sprite, (int(self.bush_sprite.get_width() * 1.5), int(self.bush_sprite.get_height() * 1.5)))
         
         self.towerSize = (self.towers["bee1"].get_width(), self.towers["bee1"].get_height())
         self.h_towers = {name : self.highlight_block(tower) for name, tower in self.towers.items()}
@@ -337,7 +337,7 @@ class Game:
                         else:
                             self.surface.blit(self.tiles["grey"], (draw_x, draw_y)) # Grey
                     elif self.world_grid[i][j] == "l1" or self.world_grid[i][j] == "b2":
-                        self.surface.blit(self.tiles["red"], (draw_x, draw_y)) # Red
+                        self.surface.blit(self.tiles["path"], (draw_x, draw_y)) # Red
                     elif self.world_grid[i][j] == -3:
                         self.surface.blit(self.tiles["white"], (draw_x, draw_y)) # White
                     elif self.world_grid[i][j] == -9:
@@ -487,7 +487,7 @@ class Game:
                         'type': 'bee', 
                         'surf': bee_surf, 
                         # Added bobbing_offset to the Y position
-                        'pos': (draw_x, (draw_y - h * 0.76) + bobbing_offset)
+                        'pos': (draw_x, (draw_y - h * 1.2) + bobbing_offset)
                     })
                     
                 elif self.world_grid[i][j] == "l1":
@@ -504,7 +504,7 @@ class Game:
                         'type': 'ladybug', 
                         'surf': bee_surf, 
                         # Added bobbing_offset to the Y position
-                        'pos': (draw_x, (draw_y - h * 0.76) + bobbing_offset)
+                        'pos': (draw_x, (draw_y - h * 1.2) + bobbing_offset)
                     })
                     
                 elif self.world_grid[i][j] == -9:
@@ -519,7 +519,7 @@ class Game:
                         'z': draw_y, 
                         'type': 'tree', 
                         'surf': tree_surf, 
-                        'pos': (draw_x - 20, draw_y - h * 1.75)
+                        'pos': (draw_x - 10, draw_y - h * 1.1)
                     })
                 elif self.world_grid[i][j] == -8:
                     draw_x = pivot_x + (j - i) * half_w - half_w
@@ -533,7 +533,7 @@ class Game:
                         'z': draw_y, 
                         'type': 'bush', 
                         'surf': tree_surf, 
-                        'pos': (draw_x, draw_y - 16)
+                        'pos': (draw_x + 5, draw_y - h * 0.35)
                     })
         return tree_elements
 
