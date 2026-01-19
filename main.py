@@ -3,8 +3,9 @@ import sys
 import pygame
 import copy
 import numpy as np
-import maps
+from maps import Maps
 import random
+from start_screen import StartScreen
 
 DEFAULT_BGCOLOR = (137, 207, 240)
 DEFAULT_WIDTH   = 978
@@ -18,7 +19,7 @@ MOBS_DIR = os.path.join(os.path.dirname(__file__), 'mobs')
 
 rgb = tuple[int,int,int]
 num = random.randint(1,5)
-PRESET_WORLD = maps.Maps().levels[1]
+PRESET_WORLD = Maps().levels[1]
 
 #SPRITES_DIR = os.path.join(ASSETS_DIR, 'sprites')
 
@@ -265,6 +266,8 @@ class Game:
         pygame.init()
         pygame.display.set_caption("Power Offense")
         self.surface = pygame.display.set_mode((self.width,self.height))
+        self.showing_start_screen = True
+        self.start_screen = StartScreen(self.surface)
         self.clock = pygame.time.Clock()
         self.initiate_blocks()
         self.initiate_towers()
@@ -544,70 +547,74 @@ class Game:
         return tree_elements
 
     def draw_window(self) -> None:
-        self.surface.fill(self.bgcolor)
-        self.background = self.load_world("wbsky.png")
-        self.bg_image = pygame.transform.scale(self.background,(int(self.background.get_width() * 0.7), int(self.background.get_height() * 0.75)))
-        self.surface.blit(self.bg_image, (0, 0))
-        self.update_and_draw_clouds()
-        self.island = self.load_world("island.png")
-        self.island_image = pygame.transform.scale(self.island,(int(self.island.get_width() * 1), int(self.island.get_height() * 1.2)))
-        self.surface.blit(self.island_image, (-100, 0))
-        self.background = self.load_world("wb.png")
-        self.bg_image = pygame.transform.scale(self.background,(int(self.background.get_width() * 0.7), int(self.background.get_height() * 0.75)))
-        self.surface.blit(self.bg_image, (0, 0))
-        self.map_grid()
-        self.tree_life = self.load_world("tree_of_life.png")
-        self.tree_life_img = pygame.transform.scale(self.tree_life,(int(self.tree_life.get_width() * 1.5), int(self.tree_life.get_height() * 1.5)))
-        self.surface.blit(self.tree_life_img, (250, 30))
-        #self.surface.blit(self.load_image('red.png'), (800, 600))
-        #self.surface.blit(self.load_image('purple.png'), (840, 600))
-        #self.surface.blit(self.load_image('water.png'), (880, 600))
+        if self.showing_start_screen:
+            self.start_screen.draw()
+            pygame.display.update()
+        else:
+            self.surface.fill(self.bgcolor)
+            self.background = self.load_world("wbsky.png")
+            self.bg_image = pygame.transform.scale(self.background,(int(self.background.get_width() * 0.7), int(self.background.get_height() * 0.75)))
+            self.surface.blit(self.bg_image, (0, 0))
+            self.update_and_draw_clouds()
+            self.island = self.load_world("island.png")
+            self.island_image = pygame.transform.scale(self.island,(int(self.island.get_width() * 1), int(self.island.get_height() * 1.2)))
+            self.surface.blit(self.island_image, (-100, 0))
+            self.background = self.load_world("wb.png")
+            self.bg_image = pygame.transform.scale(self.background,(int(self.background.get_width() * 0.7), int(self.background.get_height() * 0.75)))
+            self.surface.blit(self.bg_image, (0, 0))
+            self.map_grid()
+            self.tree_life = self.load_world("tree_of_life.png")
+            self.tree_life_img = pygame.transform.scale(self.tree_life,(int(self.tree_life.get_width() * 1.5), int(self.tree_life.get_height() * 1.5)))
+            self.surface.blit(self.tree_life_img, (250, 30))
+            #self.surface.blit(self.load_image('red.png'), (800, 600))
+            #self.surface.blit(self.load_image('purple.png'), (840, 600))
+            #self.surface.blit(self.load_image('water.png'), (880, 600))
 
-        layer_queue = []
-        layer_queue.extend(self.get_object_layers())
+            layer_queue = []
+            layer_queue.extend(self.get_object_layers())
 
-        if self.round_active:
-            self.mobs = [m for m in self.mobs if m.health > 0]
+            if self.round_active:
+                self.mobs = [m for m in self.mobs if m.health > 0]
+                
+                finished_mobs = [m for m in self.mobs if m.at_end]
+                for m in finished_mobs:
+                    self.points += m.dmg
+                
+                self.mobs = [m for m in self.mobs if not m.at_end]
+                
+                for mob in self.mobs:
+                    mob.update()
+                    layer_queue.append({
+                        'z': mob.pos.y, 
+                        'type': 'mob', 
+                        'obj': mob
+                    })
+
+            # Sorts by furthest from screen to closest to screen
+            layer_queue.sort(key=lambda item: item['z'])
+
+            # Draw based off order
+            for item in layer_queue:
+                if item['type'] == 'tree':
+                    self.surface.blit(item['surf'], item['pos'])
+                elif item['type'] == 'bush':
+                    self.surface.blit(item['surf'], item['pos'])
+                elif item['type'] == 'bee':
+                    self.surface.blit(item['surf'], item['pos'])
+                elif item['type'] == 'ladybug':
+                    self.surface.blit(item['surf'], item['pos'])
+                elif item['type'] == 'mob':
+                    item['obj'].draw(self.surface)
+
+            self.font = pygame.font.Font(None, 35)
+            #self.surface.blit(self.path_icon, (50, 640))
+            self.text = self.font.render(f'Tiles', True, (0, 0, 0))
+            self.surface.blit(self.text, (750, 450))
+            self.text = self.font.render(f'Remaining: {self.paths_remaining}', True, (0, 0, 0))
+            self.surface.blit(self.text, (750, 485))
             
-            finished_mobs = [m for m in self.mobs if m.at_end]
-            for m in finished_mobs:
-                self.points += m.dmg
-            
-            self.mobs = [m for m in self.mobs if not m.at_end]
-            
-            for mob in self.mobs:
-                mob.update()
-                layer_queue.append({
-                    'z': mob.pos.y, 
-                    'type': 'mob', 
-                    'obj': mob
-                })
-
-        # Sorts by furthest from screen to closest to screen
-        layer_queue.sort(key=lambda item: item['z'])
-
-        # Draw based off order
-        for item in layer_queue:
-            if item['type'] == 'tree':
-                self.surface.blit(item['surf'], item['pos'])
-            elif item['type'] == 'bush':
-                self.surface.blit(item['surf'], item['pos'])
-            elif item['type'] == 'bee':
-                self.surface.blit(item['surf'], item['pos'])
-            elif item['type'] == 'ladybug':
-                self.surface.blit(item['surf'], item['pos'])
-            elif item['type'] == 'mob':
-                item['obj'].draw(self.surface)
-
-        self.font = pygame.font.Font(None, 35)
-        #self.surface.blit(self.path_icon, (50, 640))
-        self.text = self.font.render(f'Tiles', True, (0, 0, 0))
-        self.surface.blit(self.text, (750, 450))
-        self.text = self.font.render(f'Remaining: {self.paths_remaining}', True, (0, 0, 0))
-        self.surface.blit(self.text, (750, 485))
-        
-        self.draw_UI()
-        pygame.display.update()
+            self.draw_UI()
+            pygame.display.update()
 
     #Optimize This
     def is_grid_valid(self, world_grid, grid_size):
@@ -677,45 +684,49 @@ class Game:
             for event in events:
                 if event.type == pygame.QUIT:
                     self.quit_app()
-                elif event.type == pygame.MOUSEMOTION:
-                    self.x, self.y = event.pos
-                elif event.type == pygame.MOUSEBUTTONDOWN: # 1 is left, 3 is right
-                    if event.button == 1:
-                        self.set_path = True
-                    elif event.button == 3:
-                        self.rm_path = True
-                elif event.type == pygame.MOUSEBUTTONUP:
-                    if event.button == 1:
-                        self.set_path = False
-                    elif event.button == 3:
-                        self.rm_path = False
-                elif event.type == pygame.KEYDOWN:
-                    if event.key == pygame.K_r:
-                        if not self.round_active:
-                            self.reset_grid()
-                            self.edit_mode = True
-                            self.round_active = False
+                if self.showing_start_screen:
+                    if event.type == pygame.KEYDOWN or event.type == pygame.MOUSEBUTTONDOWN:
+                            self.showing_start_screen = False
+                else:
+                    if event.type == pygame.MOUSEMOTION:
+                        self.x, self.y = event.pos
+                    elif event.type == pygame.MOUSEBUTTONDOWN: # 1 is left, 3 is right
+                        if event.button == 1:
+                            self.set_path = True
+                        elif event.button == 3:
+                            self.rm_path = True
+                    elif event.type == pygame.MOUSEBUTTONUP:
+                        if event.button == 1:
+                            self.set_path = False
+                        elif event.button == 3:
+                            self.rm_path = False
+                    elif event.type == pygame.KEYDOWN:
+                        if event.key == pygame.K_r:
+                            if not self.round_active:
+                                self.reset_grid()
+                                self.edit_mode = True
+                                self.round_active = False
 
-                    if event.key == pygame.K_SPACE:
-                        if self.is_grid_valid(self.world_grid, GRID_SIZE) and not self.round_active and self.round_ended:
-                            self.edit_mode = False
-                            self.round_active = True
-                            self.round_ended = False
-                            self.mobs_to_spawn = 10 
-                            # Set timer to trigger SPAWN_MOB_EVENT every 1000ms (1 second)
-                            pygame.time.set_timer(self.SPAWN_MOB_EVENT, 1000)
+                        if event.key == pygame.K_SPACE:
+                            if self.is_grid_valid(self.world_grid, GRID_SIZE) and not self.round_active and self.round_ended:
+                                self.edit_mode = False
+                                self.round_active = True
+                                self.round_ended = False
+                                self.mobs_to_spawn = 10 
+                                # Set timer to trigger SPAWN_MOB_EVENT every 1000ms (1 second)
+                                pygame.time.set_timer(self.SPAWN_MOB_EVENT, 1000)
 
-                elif event.type == self.SPAWN_MOB_EVENT:
-                    self.round_ended = False
-                    if self.mobs_to_spawn > 0:
-                        pts = self.get_path_waypoints()
-                        new_mob = Mob(pts, self.spriteSize, DEFAULT_WIDTH/2, 50)
-                        self.mobs.append(new_mob)
-                        self.mobs_to_spawn -= 1
-                    else:
-                        pygame.time.set_timer(self.SPAWN_MOB_EVENT, 0)
-                elif event.type == pygame.KEYUP:
-                    pass
+                    elif event.type == self.SPAWN_MOB_EVENT:
+                        self.round_ended = False
+                        if self.mobs_to_spawn > 0:
+                            pts = self.get_path_waypoints()
+                            new_mob = Mob(pts, self.spriteSize, DEFAULT_WIDTH/2, 50)
+                            self.mobs.append(new_mob)
+                            self.mobs_to_spawn -= 1
+                        else:
+                            pygame.time.set_timer(self.SPAWN_MOB_EVENT, 0)
+                    elif event.type == pygame.KEYUP:
+                        pass
             if self.round_active and self.mobs_to_spawn == 0 and len(self.mobs) == 0:
                 self.round_active = False
                 self.round_ended = True
@@ -723,7 +734,11 @@ class Game:
                 # Optional: self.paths_remaining = MAX_TILES # Reset tiles for next round?
 
             self.draw_window()
-            self.clock.tick(60)
+            if self.showing_start_screen:
+                self.clock.tick(15)
+            else:
+                self.clock.tick(60)
+
 
 # ========
 
