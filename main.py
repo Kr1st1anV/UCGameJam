@@ -358,24 +358,24 @@ class Game:
             "tltrblbr": "4way",
 
             # --- 3-Way Junctions ---
-            "tltrbr":   "3waybr",
-            "tltrbl":   "3waytl",
-            "tlblbr":   "3waybl",
-            "trblbr":   "3waytr",
+            "tltrbr":   "3waytl",
+            "tltrbl":   "3waytr",
+            "tlblbr":   "3waybr",
+            "trblbr":   "3waybl",
 
             # --- 2-Way (Straights & Corners) ---
             "tlbr":     "posdia", # Straight line from Top-Left to Bottom-Right
             "trbl":     "negdia", # Straight line from Top-Right to Bottom-Left
             "blbr":     "blbr",   # Corner connecting Bottom-Left and Bottom-Right
             "tltr":     "tltr",   # Corner connecting Top-Left and Top-Right
-            "tlbl":     "tlbl",   # Corner connecting Top-Left and Bottom-Left
-            "trbr":     "trbr",   # Corner connecting Top-Right and Bottom-Right
+            "tlbl":     "trbr",   # Corner connecting Top-Left and Bottom-Left
+            "trbr":     "tlbl",   # Corner connecting Top-Right and Bottom-Right
 
             # --- 1-Way (Dead Ends) ---
-            "tl":       "endtl",
-            "tr":       "endtr",
-            "bl":       "endbl",
-            "br":       "endbr"
+            "tl":       "endbl",
+            "tr":       "endbr",
+            "bl":       "endtl",
+            "br":       "endtr"
         }
 
         # Return the image from your loaded tiles, or a default path if not found
