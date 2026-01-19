@@ -138,6 +138,7 @@ class Game:
         self.height  = height if height else DEFAULT_HEIGHT
         self.ground = None
         self.runner = None
+        self.ui_hitboxes = {}
         self.x = 0
         self.y = 0
         self.set_path = False
@@ -537,8 +538,6 @@ class Game:
                         if state == "attack":
                             self.tower_states[tower_key]["status"] = "idle"
                             # pygame.draw.line(self.surface, (255, 255, 0), tower_pos, target_mob.pos, 2)
-
-
     
     def draw_UI(self) -> None: 
         #scale fix
@@ -548,6 +547,14 @@ class Game:
         scale_fix_bol = pygame.transform.scale(bookoflife, (int(bookoflife.get_width() * 0.7), int(bookoflife.get_height() * 0.7)))
         scroll = self.load_world('emptyscroll.png')
         scale_fix_scroll = pygame.transform.scale(scroll, (int(scroll.get_width() * 0.35), int(scroll.get_height() * 0.35)))
+
+        ##### UI PRESS #####
+        boe_rect = scale_fix_boe.get_rect(topleft=(673, 525))
+        self.ui_hitboxes['book_of_evil'] = boe_rect.inflate(-40, -40)
+
+        bol_rect = scale_fix_bol.get_rect(topleft=(673, 350))
+        self.ui_hitboxes['book_of_life'] = bol_rect.inflate(-20, -200)
+        #########################
 
         self.font = pygame.font.Font(os.path.join(os.path.join(os.path.dirname(__file__), 'fonts'), "Dico.ttf"), 35)
         romanNumeral = self.intToRoman(self.wave)
@@ -565,6 +572,13 @@ class Game:
         self.surface.blit(scale_fix_bol, (673, 350))
         #self.surface.blit(scale_fix_scroll, (670, 230)) THIS IS THE SCROLL
     
+    def ui_check_click(self, mouse_pos):
+        if 'book_of_evil' in self.ui_hitboxes and self.ui_hitboxes['book_of_evil'].collidepoint(mouse_pos):
+            return "BOOK_OF_EVIL"
+        if 'book_of_life' in self.ui_hitboxes and self.ui_hitboxes['book_of_life'].collidepoint(mouse_pos):
+            return "BOOK_OF_LIFE"
+        return None
+
     def get_health_frame(self):
         current_pct = max(0, self.tree_health)
         
@@ -836,10 +850,16 @@ class Game:
                         self.x, self.y = event.pos
                     elif event.type == pygame.MOUSEBUTTONDOWN: # 1 is left, 3 is right
                         if event.button == 1:
-                            if self.build:
-                                self.set_path = True
+                            ui_action = self.ui_check_click(event.pos)
+                            if ui_action == "BOOK_OF_EVIL":
+                                print("Book of evil was clicked")
+                            elif ui_action == "BOOK_OF_LIFE":
+                                print("Book of life was clicked")
                             else:
-                                self.rm_path = True
+                                if self.build:
+                                    self.set_path = True
+                                else:
+                                    self.rm_path = True
                     elif event.type == pygame.MOUSEBUTTONUP:
                         if event.button == 1:
                             self.set_path = False
