@@ -20,7 +20,7 @@ MOBS_DIR = os.path.join(os.path.dirname(__file__), 'mobs')
 
 rgb = tuple[int,int,int]
 num = random.randint(1,5)
-PRESET_WORLD = Maps().levels[1]
+PRESET_WORLD = Maps().levels[6]
 
 #SPRITES_DIR = os.path.join(ASSETS_DIR, 'sprites')
 
