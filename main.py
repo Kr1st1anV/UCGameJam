@@ -358,34 +358,27 @@ class Game:
         
         key = "".join(connections)
 
-        # 3. The Mapping Dictionary (Your "Guess and Check" area)
-        # The key is the neighbors found, the value is your filename
         mapping = {
-            # --- 4-Way Junction ---
             "tltrblbr": "4way",
 
-            # --- 3-Way Junctions ---
             "tltrbr":   "3waytl",
             "tltrbl":   "3waytr",
             "tlblbr":   "3waybr",
             "trblbr":   "3waybl",
 
-            # --- 2-Way (Straights & Corners) ---
-            "tlbr":     "posdia", # Straight line from Top-Left to Bottom-Right
-            "trbl":     "negdia", # Straight line from Top-Right to Bottom-Left
-            "blbr":     "blbr",   # Corner connecting Bottom-Left and Bottom-Right
-            "tltr":     "tltr",   # Corner connecting Top-Left and Top-Right
-            "tlbl":     "trbr",   # Corner connecting Top-Left and Bottom-Left
-            "trbr":     "tlbl",   # Corner connecting Top-Right and Bottom-Right
+            "tlbr":     "posdia",
+            "trbl":     "negdia",
+            "blbr":     "blbr",   
+            "tltr":     "tltr",  
+            "tlbl":     "trbr",   
+            "trbr":     "tlbl",   
 
-            # --- 1-Way (Dead Ends) ---
             "tl":       "endbl",
             "tr":       "endbr",
             "bl":       "endtl",
             "br":       "endtr"
         }
 
-        # Return the image from your loaded tiles, or a default path if not found
         tile_name = mapping.get(key, "path") 
         return self.tiles.get(tile_name, self.tiles["path"])
 

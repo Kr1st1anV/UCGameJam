@@ -1,4 +1,4 @@
-class Mobs:
+class Mob:
     def __init__(self, grid_coords, sprite_size, pivot_x, pivot_y):
         self.health = 10
         self.waypoints = []
@@ -10,8 +10,16 @@ class Mobs:
         self.mobtype = [['dragonfly flying_0001.png', 'dragonfly flying_0002.png', 'dragonfly flying_0003.png', 'dragonfly flying_0004.png']
                         , ['worm moving_0001.png', 'worm moving_0002.png', 'worm moving_0003.png', 'worm moving_0004.png'],
                         ['butterfly_0001.png', 'butterfly_0002.png', 'butterfly_0003.png', 'butterfly_0004.png'],
-                        ['snail idle_0001.png', 'snail idle_0002.png', 'snail idle_0003.png', 'snail idle_0004.png']]
+                        ['snail idle_0001.png', 'snail idle_0002.png', 'snail idle_0003.png', 'snail idle_0004.png'],
+                        ['beetle_0001.png', 'beetle_0002.png', 'beetle_0003.png', 'beetle_0004.png']]
+        self.mob_health_values = [20, 10, 50, 100, 120]
+        self.mob_dmg = [6, 2, 4, 3, 3]
+
         self.randmob = random.randint(0, len(self.mobtype) - 1)
+        self.health = self.mob_health_values[self.randmob]
+        self.dmg = self.mob_dmg[self.randmob]
+        print(f"Spawned mob type {self.randmob} with {self.health} health")
+        print(f"Spawned mob type {self.randmob} with {self.dmg} dmg")
 
         self.mobframes = [self.load_mob(frame) for frame in self.mobtype[self.randmob]]
 
@@ -52,8 +60,13 @@ class Mobs:
             self.current_frame = (self.current_frame + 1) % len(self.mobframes)
 
     def draw(self, surface):
-            # Draw a small red square as the 'runner'
         current_sprite = self.mobframes[self.current_frame]
+        
+        if self.target_idx < len(self.waypoints):
+            target = self.waypoints[self.target_idx]
+            if target.x < self.pos.x:
+                current_sprite = pygame.transform.flip(current_sprite, True, False)
+
         sprite_rect = current_sprite.get_rect()
-        sprite_rect.center = (self.pos.x ,self.pos.y)
+        sprite_rect.center = (self.pos.x, self.pos.y)
         surface.blit(current_sprite, sprite_rect)
