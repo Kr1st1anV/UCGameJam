@@ -30,6 +30,10 @@ class StartScreen:
         self.animation_speed = 0.15  # Adjust this to make the intro faster/slower
         self.animation_counter = 0
 
+    def load_image(self, name):
+        path = os.path.join(os.path.dirname(__file__), 'buttons', name)
+        return pygame.image.load(path).convert_alpha()
+
     def draw(self):
         # Update animation index
         self.animation_counter += self.animation_speed
@@ -39,3 +43,9 @@ class StartScreen:
 
         # Draw the current frame
         self.surface.blit(self.frames[self.current_frame], (0, 0))
+
+    def buttons(self):
+        self.surface.blit(self.load_image('Heliosylva.png'), (0, -50))
+        self.surface.blit(self.load_image('settings.png'), (600, 500))
+        self.surface.blit(self.load_image('start.png'), (500, 200))
+        self.surface.blit(self.load_image('tutorial.png'), (600, 400))

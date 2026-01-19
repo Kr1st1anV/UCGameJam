@@ -15,6 +15,7 @@ MAX_TILES = 35
 ASSETS_DIR = os.path.join(os.path.dirname(__file__), 'tiles')
 BGROUND_DIR = os.path.join(os.path.dirname(__file__), 'bground')
 TOWERS_DIR = os.path.join(os.path.dirname(__file__), 'towers')
+BUTTONS_DIR = os.path.join(os.path.dirname(__file__), 'buttons')
 MOBS_DIR = os.path.join(os.path.dirname(__file__), 'mobs')
 
 rgb = tuple[int,int,int]
@@ -552,6 +553,7 @@ class Game:
     def draw_window(self) -> None:
         if self.showing_start_screen:
             self.start_screen.draw()
+            self.start_screen.buttons()
             pygame.display.update()
         else:
             self.surface.fill(self.bgcolor)
