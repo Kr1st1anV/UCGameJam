@@ -23,7 +23,7 @@ num = random.randint(1,5)
 #SPRITES_DIR = os.path.join(ASSETS_DIR, 'sprites')
 
 
-PRESET_WORLD = [[-1, 0, 0, 0, "l1", 0, 0, 0, 0, 0], 
+PRESET_WORLD = [[0, -1, 0, 0, "l1", 0, 0, 0, 0, 0], 
                 [0, 0, 0, 0, 0, 0, "b2", 0, 0, 0], 
                 [0, 0, 0, 0, 0, 0, 0, 0, "b2", 0], 
                 [0, "l1", 0, "b2", 0, 0, 0, 0, 0, 0], 
@@ -41,7 +41,7 @@ class Mob:
         w, h = sprite_size
         half_w, half_h = w / 2, h / 4
         pivot_x = DEFAULT_WIDTH /3
-        pivot_y = 125 * 2
+        pivot_y = 125 * 2.6
         self.mobcolor = [(200, 50, 50),(93, 63, 211),(0, 255, 255)]
         self.mobtype = [['dragonfly flying_0001.png', 'dragonfly flying_0002.png', 'dragonfly flying_0003.png', 'dragonfly flying_0004.png']
                         , ['worm moving_0001.png', 'worm moving_0002.png', 'worm moving_0003.png', 'worm moving_0004.png'],
@@ -162,7 +162,7 @@ class Game:
         return pygame.image.load(path).convert_alpha()
     
     def initiate_blocks(self):
-        scale_factor = 1
+        scale_factor = 1.5
         self.tiles = {}
         for root, dir, files in os.walk(ASSETS_DIR):
             all_tiles = sorted(files)
@@ -180,7 +180,7 @@ class Game:
         self.h_tiles = {name : self.highlight_block(tile) for name, tile in self.tiles.items()}
 
     def initiate_towers(self):
-        scale_factor = 0.75
+        scale_factor = 1.5
         self.towers = {}
         self.bee_frames = []
         self.ladybug_frames = []
@@ -209,6 +209,52 @@ class Game:
         self.bee_anim_index = 0
         self.bee_anim_timer = 0
 
+    def initiate_clouds(self):
+        self.clouds = {}
+        self.cloud1 = self.load_world('cloud1.png')
+        self.clouds["cloud1"] = self.cloud1 = pygame.transform.scale(self.cloud1,(int(self.cloud1.get_width() * 1), int(self.cloud1.get_height() *1)))
+        self.cloud2 = self.load_world('cloud2.png')
+        self.clouds["cloud2"] = self.temp_tile = pygame.transform.scale(self.cloud2,(int(self.cloud2.get_width() * 1), int(self.cloud2.get_height() * 1)))
+        # Load and scale your images
+        self.cloud_images = [
+            pygame.transform.scale(self.load_world('cloud1.png'), (int(self.cloud1.get_width() * 1), int(self.cloud1.get_height() * 1))),
+            pygame.transform.scale(self.load_world('cloud2.png'), (int(self.cloud2.get_width() * 1), int(self.cloud2.get_height() * 1)))
+        ]
+        
+        # This list will hold dictionaries of active clouds
+        self.active_clouds = []
+        
+        # Spawn a few initial clouds so the sky isn't empty at the start
+        for _ in range(3):
+            self.spawn_cloud(random.randint(0, 700))
+
+    def update_and_draw_clouds(self):
+        for cloud in self.active_clouds[:]: # Use [:] to safely remove items while looping
+            # Move the cloud
+            cloud["x"] += cloud["speed"]
+            
+            # Draw the cloud
+            self.surface.blit(cloud["image"], (cloud["x"], cloud["y"]))
+            
+            # If the cloud goes off the right side of the screen, remove it and spawn a new one
+            if cloud["x"] > 700:
+                self.active_clouds.remove(cloud)
+                self.spawn_cloud() # This spawns a new one at the default -300 x
+
+    def spawn_cloud(self, x_pos=None):
+        # If no x_pos is given, start it off-screen to the left
+        if x_pos is None:
+            x_pos = -300 
+            
+        new_cloud = {
+            "image": random.choice(self.cloud_images),
+            "x": x_pos,
+            "y": random.randint(20, 50), # Random height in the sky
+            "speed": random.uniform(0.2, 0.8) # Varied floating speeds
+        }
+        self.active_clouds.append(new_cloud)
+        
+
     def run_app(self) -> None:
         pygame.init()
         pygame.display.set_caption("Power Offense")
@@ -216,6 +262,7 @@ class Game:
         self.clock = pygame.time.Clock()
         self.initiate_blocks()
         self.initiate_towers()
+        self.initiate_clouds()
         self.run_event_loop()
 
     def quit_app(self) -> None:
@@ -231,7 +278,7 @@ class Game:
         half_h = h / 4
 
         pivot_x = DEFAULT_WIDTH / 3
-        pivot_y = 125 * 2
+        pivot_y = 125 * 2.6
 
         rel_x = self.x - pivot_x
         rel_y = self.y - pivot_y
@@ -385,19 +432,31 @@ class Game:
 
     
     def draw_UI(self) -> None: 
+        #scale fix
+        bookofevil = self.load_world('bookofevilbutton.png')
+        scale_fix_boe = pygame.transform.scale(bookofevil, (int(bookofevil.get_width() * 0.7), int(bookofevil.get_height() * 0.7)))
+        bookoflife = self.load_world('bookoflifebutton.png')
+        scale_fix_bol = pygame.transform.scale(bookoflife, (int(bookoflife.get_width() * 0.7), int(bookoflife.get_height() * 0.7)))
+        scroll = self.load_world('emptyscroll.png')
+        scale_fix_scroll = pygame.transform.scale(scroll, (int(scroll.get_width() * 0.35), int(scroll.get_height() * 0.35)))
+
         self.font = pygame.font.Font(None, 35)
         self.mobs_text = self.font.render(f'Mobs: {self.mobs_to_spawn}', True, (0, 0, 0))
         self.points_text = self.font.render(f'Points: {self.points}', True, (0, 0, 0))
         self.units_text = self.font.render(f'Units:', True, (0, 0, 0))
-        self.surface.blit(self.mobs_text, (750, 30))
-        self.surface.blit(self.points_text, (750, 80))
+        self.surface.blit(self.mobs_text, (730, 30))
+        self.surface.blit(self.points_text, (730, 80))
         self.surface.blit(self.units_text, (1130, 550))
-        self.surface.blit(self.load_world('settingsbutton.png'), (700, 50))
+
+        self.surface.blit(self.load_world('settingsbutton.png'), (800, 0))
+        self.surface.blit(scale_fix_boe, (673, 440))
+        self.surface.blit(scale_fix_bol, (673, 350))
+        self.surface.blit(scale_fix_scroll, (670, 230))
 
     def get_object_layers(self):
         w, h = self.spriteSize
         half_w, half_h = w / 2, h / 4
-        pivot_x, pivot_y = DEFAULT_WIDTH / 3, 125 * 2
+        pivot_x, pivot_y = DEFAULT_WIDTH / 3, 125 * 2.6
 
         rel_x, rel_y = self.x - pivot_x, self.y - pivot_y
         mouse_j = (rel_x / half_w + rel_y / half_h) / 2
@@ -480,19 +539,23 @@ class Game:
 
     def draw_window(self) -> None:
         self.surface.fill(self.bgcolor)
-        self.background = self.load_world("fullbg.png")
+        self.background = self.load_world("wbsky.png")
         self.bg_image = pygame.transform.scale(self.background,(int(self.background.get_width() * 0.7), int(self.background.get_height() * 0.75)))
         self.surface.blit(self.bg_image, (0, 0))
-        # self.island = self.load_world("island.png")
-        # self.island_image = pygame.transform.scale(self.island,(int(self.island.get_width() * 1.1), int(self.island.get_height() * 1.1)))
-        # self.surface.blit(self.island_image, (150, -50))
+        self.update_and_draw_clouds()
+        self.island = self.load_world("island.png")
+        self.island_image = pygame.transform.scale(self.island,(int(self.island.get_width() * 1), int(self.island.get_height() * 1.2)))
+        self.surface.blit(self.island_image, (-100, 0))
+        self.background = self.load_world("wb.png")
+        self.bg_image = pygame.transform.scale(self.background,(int(self.background.get_width() * 0.7), int(self.background.get_height() * 0.75)))
+        self.surface.blit(self.bg_image, (0, 0))
         self.map_grid()
         self.tree_life = self.load_world("tree_of_life.png")
-        self.tree_life_img = pygame.transform.scale(self.tree_life,(int(self.tree_life.get_width() * 1), int(self.tree_life.get_height() * 1)))
-        self.surface.blit(self.tree_life_img, (250, 50))
-        self.surface.blit(self.load_image('red.png'), (800, 600))
-        self.surface.blit(self.load_image('purple.png'), (840, 600))
-        self.surface.blit(self.load_image('water.png'), (880, 600))
+        self.tree_life_img = pygame.transform.scale(self.tree_life,(int(self.tree_life.get_width() * 1.5), int(self.tree_life.get_height() * 1.5)))
+        self.surface.blit(self.tree_life_img, (250, 30))
+        #self.surface.blit(self.load_image('red.png'), (800, 600))
+        #self.surface.blit(self.load_image('purple.png'), (840, 600))
+        #self.surface.blit(self.load_image('water.png'), (880, 600))
 
         layer_queue = []
         layer_queue.extend(self.get_object_layers())
