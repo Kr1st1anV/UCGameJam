@@ -258,7 +258,8 @@ class Game:
                     if self.world_grid[i][j] == 0:
                         self.surface.blit(self.h_tiles["dark_grass"], (draw_x, draw_y)) # Grass
                     elif self.world_grid[i][j] == 1:
-                        self.surface.blit(self.h_tiles["path"], (draw_x, draw_y)) # Path
+                        sprite = self.get_path_sprite(i, j)
+                        self.surface.blit(sprite, (draw_x, draw_y))
                     elif self.world_grid[i][j] == -1:
                         valid_path = self.is_grid_valid(self.world_grid, GRID_SIZE)
                         if valid_path:
@@ -273,7 +274,8 @@ class Game:
                     if self.world_grid[i][j] == 0:
                         self.surface.blit(self.tiles["dark_grass"], (draw_x, draw_y)) # Grass
                     elif self.world_grid[i][j] == 1:
-                        self.surface.blit(self.tiles["path"], (draw_x, draw_y)) # Path
+                        sprite = self.get_path_sprite(i, j)
+                        self.surface.blit(sprite, (draw_x, draw_y))
                     elif self.world_grid[i][j] == -1:
                         valid_path = self.is_grid_valid(self.world_grid, GRID_SIZE)
                         if valid_path:
@@ -331,6 +333,54 @@ class Game:
         highlighted_sprite = sprite.copy()
         highlighted_sprite.blit(white_sprite, (0,0), special_flags = pygame.BLEND_RGB_ADD)
         return highlighted_sprite
+    
+    def get_path_sprite(self, i, j):
+        # 1. Check neighbors (1 or -1 means a path exists)
+        tl = i > 0 and self.world_grid[i-1][j] in [1, -1]
+        tr = j > 0 and self.world_grid[i][j-1] in [1, -1]
+        bl = j < GRID_SIZE - 1 and self.world_grid[i][j+1] in [1, -1]
+        br = i < GRID_SIZE - 1 and self.world_grid[i+1][j] in [1, -1]
+
+        # 2. Build a key based on which neighbors are True
+        # We will use alphabetical order so 'tl' and 'tr' becomes 'tltr'
+        connections = []
+        if tl: connections.append("tl")
+        if tr: connections.append("tr")
+        if bl: connections.append("bl")
+        if br: connections.append("br")
+        
+        key = "".join(connections)
+
+        # 3. The Mapping Dictionary (Your "Guess and Check" area)
+        # The key is the neighbors found, the value is your filename
+        mapping = {
+            # --- 4-Way Junction ---
+            "tltrblbr": "4way",
+
+            # --- 3-Way Junctions ---
+            "tltrbr":   "3waybr",
+            "tltrbl":   "3waytl",
+            "tlblbr":   "3waybl",
+            "trblbr":   "3waytr",
+
+            # --- 2-Way (Straights & Corners) ---
+            "tlbr":     "posdia", # Straight line from Top-Left to Bottom-Right
+            "trbl":     "negdia", # Straight line from Top-Right to Bottom-Left
+            "blbr":     "blbr",   # Corner connecting Bottom-Left and Bottom-Right
+            "tltr":     "tltr",   # Corner connecting Top-Left and Top-Right
+            "tlbl":     "tlbl",   # Corner connecting Top-Left and Bottom-Left
+            "trbr":     "trbr",   # Corner connecting Top-Right and Bottom-Right
+
+            # --- 1-Way (Dead Ends) ---
+            "tl":       "endtl",
+            "tr":       "endtr",
+            "bl":       "endbl",
+            "br":       "endbr"
+        }
+
+        # Return the image from your loaded tiles, or a default path if not found
+        tile_name = mapping.get(key, "path") 
+        return self.tiles.get(tile_name, self.tiles["path"])
 
 
     
