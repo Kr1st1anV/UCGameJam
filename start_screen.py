@@ -28,13 +28,13 @@ class StartScreen:
         ##################################################################
         self.start_img = self.load_image('start.png')
         self.start_img = pygame.transform.scale(self.start_img, (int(self.start_img.get_width() * 0.7), int(self.start_img.get_height() * 0.7)))
-        full_rect = self.start_img.get_rect(topleft=(850, 190))
-        self.start_hitbox = full_rect.inflate(-180, -170)
+        full_rect = self.start_img.get_rect(topleft=(640, 160))
+        self.start_hitbox = full_rect.inflate(-120, -120)
         ##################################################################
         self.settings_img = self.load_image('settings.png')
         self.settings_img = pygame.transform.scale(self.settings_img, (int(self.settings_img.get_width() * 0.7), int(self.settings_img.get_height() * 0.7)))
-        settings_full_rect = self.settings_img.get_rect(topleft=(610, 500))
-        self.settings_hitbox = settings_full_rect.inflate(-100, -100)
+        settings_full_rect = self.settings_img.get_rect(topleft=(735, 615))
+        self.settings_hitbox = settings_full_rect.inflate(-70, -65)
 
         ##################################################################
         self.tutorial_img = self.load_image('tutorial.png')
@@ -45,8 +45,8 @@ class StartScreen:
         self.logo_img = self.load_image('Heliosylva.png')
         self.logo_img = pygame.transform.scale(self.logo_img, (int(self.logo_img.get_width() * 0.7), int(self.logo_img.get_height() * 0.7)))
 
-        self.start_rect = self.start_img.get_rect(topleft=(600, 200))
-        self.settings_rect = self.settings_img.get_rect(topleft=(610, 500))
+        self.start_rect = self.start_img.get_rect(topleft=(640, 160))
+        self.settings_rect = self.settings_img.get_rect(topleft=(730, 610))
         self.tutorial_rect = self.tutorial_img.get_rect(topleft=(620, 400))
 
 
@@ -65,8 +65,8 @@ class StartScreen:
 
     def draw_buttons(self):
         """Draws the buttons and the logo on top of the animation"""
-        pygame.draw.rect(self.surface, (255, 0, 0), self.start_hitbox, 5) # Red outline
-        pygame.draw.rect(self.surface, (255, 0, 0), self.settings_hitbox, 5)
+        #pygame.draw.rect(self.surface, (255, 0, 0), self.start_hitbox, 5) # Red outline
+        #pygame.draw.rect(self.surface, (255, 0, 0), self.settings_hitbox, 5)
 
 ####################################################################################################################################
         self.surface.blit(self.logo_img, (0, 0))
