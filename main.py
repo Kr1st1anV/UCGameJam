@@ -44,8 +44,15 @@ class Mob:
         pivot_x = DEFAULT_WIDTH /3
         pivot_y = 125 * 2
         self.mobcolor = [(200, 50, 50),(93, 63, 211),(0, 255, 255)]
-        self.mobtype = ['red.png', 'purple.png', 'water.png']
+        self.mobtype = [['dragonfly flying_0001.png', 'dragonfly flying_0002.png', 'dragonfly flying_0003.png', 'dragonfly flying_0004.png']
+                        , ['worm moving_0001.png', 'worm moving_0002.png', 'worm moving_0003.png', 'worm moving_0004.png']]
         self.randmob = random.randint(0, len(self.mobtype) - 1)
+
+        self.mobframes = [self.load_mob(frame) for frame in self.mobtype[self.randmob]]
+
+        self.current_frame = 0
+        self.animaton_speed = 0.15
+        self.animation_counter = 0
         
         # Convert grid indices to isometric screen coordinates
         for i, j in grid_coords:
@@ -74,11 +81,17 @@ class Mob:
         else:
             self.at_end = True  
 
+        self.animation_counter += self.animaton_speed
+        if self.animation_counter >= 1:
+            self.animation_counter = 0
+            self.current_frame = (self.current_frame + 1) % len(self.mobframes)
+
     def draw(self, surface):
-        pass
-        # Draw a small red square as the 'runner'
-        #mob_sprite = self.load_mob("bee1.png")
-        #surface.blit(mob_sprite, (self.pos.x - 32, self.pos.y - 32))           
+            # Draw a small red square as the 'runner'
+        current_sprite = self.mobframes[self.current_frame]
+        sprite_rect = current_sprite.get_rect()
+        sprite_rect.center = (self.pos.x ,self.pos.y)
+        surface.blit(current_sprite, sprite_rect)
 
 class Game:
 
@@ -490,7 +503,7 @@ class Game:
                             self.reset_grid()
                             self.edit_mode = True
                             self.round_active = False
-########################################################################################################################################
+
                     if event.key == pygame.K_SPACE:
                         if self.is_grid_valid(self.world_grid, GRID_SIZE) and not self.round_active and self.round_ended:
                             self.edit_mode = False
@@ -499,7 +512,7 @@ class Game:
                             self.mobs_to_spawn = 10 
                             # Set timer to trigger SPAWN_MOB_EVENT every 1000ms (1 second)
                             pygame.time.set_timer(self.SPAWN_MOB_EVENT, 1000)
-########################################################################################################################################
+
                 elif event.type == self.SPAWN_MOB_EVENT:
                     self.round_ended = False
                     if self.mobs_to_spawn > 0:
@@ -525,4 +538,3 @@ class Game:
 if __name__ == "__main__":
     q = Game()
     q.run_app()
-
