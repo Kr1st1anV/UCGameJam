@@ -3,9 +3,8 @@ import sys
 import pygame
 import copy
 import numpy as np
-import Maps
+import maps
 import random
-import Mob
 
 DEFAULT_BGCOLOR = (137, 207, 240)
 DEFAULT_WIDTH   = 978
@@ -45,8 +44,15 @@ class Mob:
         pivot_x = DEFAULT_WIDTH /3
         pivot_y = 125 * 2
         self.mobcolor = [(200, 50, 50),(93, 63, 211),(0, 255, 255)]
-        self.mobtype = ['red.png', 'purple.png', 'water.png']
+        self.mobtype = [['dragonfly flying_0001.png', 'dragonfly flying_0002.png', 'dragonfly flying_0003.png', 'dragonfly flying_0004.png']
+                        , ['worm moving_0001.png', 'worm moving_0002.png', 'worm moving_0003.png', 'worm moving_0004.png']]
         self.randmob = random.randint(0, len(self.mobtype) - 1)
+
+        self.mobframes = [self.load_mob(frame) for frame in self.mobtype[self.randmob]]
+
+        self.current_frame = 0
+        self.animaton_speed = 0.15
+        self.animation_counter = 0
         
         # Convert grid indices to isometric screen coordinates
         for i, j in grid_coords:
@@ -75,11 +81,17 @@ class Mob:
         else:
             self.at_end = True  
 
+        self.animation_counter += self.animaton_speed
+        if self.animation_counter >= 1:
+            self.animation_counter = 0
+            self.current_frame = (self.current_frame + 1) % len(self.mobframes)
+
     def draw(self, surface):
-        pass
-        # Draw a small red square as the 'runner'
-        #mob_sprite = self.load_mob("bee1.png")
-        #surface.blit(mob_sprite, (self.pos.x - 32, self.pos.y - 32))           
+            # Draw a small red square as the 'runner'
+        current_sprite = self.mobframes[self.current_frame]
+        sprite_rect = current_sprite.get_rect()
+        sprite_rect.center = (self.pos.x ,self.pos.y)
+        surface.blit(current_sprite, sprite_rect)
 
 class Game:
 
@@ -148,8 +160,8 @@ class Game:
                 temp_sprite = self.load_image(tile)
                 self.temp_tile = pygame.transform.scale(temp_sprite,(int(temp_sprite.get_width() * scale_factor), int(temp_sprite.get_height() * scale_factor)))
                 self.tiles[name] = self.temp_tile
-        self.tree_sprite = self.load_image('tree.png')
-        self.tiles["tree"] = self.temp_tile = pygame.transform.scale(self.tree_sprite,(int(self.tree_sprite.get_width() * 2.5), int(self.tree_sprite.get_height() * 2.5)))
+        self.tree_sprite = self.load_image('tr33.png')
+        self.tiles["tree"] = self.temp_tile = pygame.transform.scale(self.tree_sprite,(int(self.tree_sprite.get_width() * scale_factor), int(self.tree_sprite.get_height() * scale_factor)))
         self.spriteSize = (self.tiles["dark_grass"].get_width(), self.tiles["dark_grass"].get_height())
         self.h_tiles = {name : self.highlight_block(tile) for name, tile in self.tiles.items()}
 
@@ -332,7 +344,7 @@ class Game:
                         'z': draw_y, 
                         'type': 'tree', 
                         'surf': tree_surf, 
-                        'pos': (draw_x - 20, draw_y - h * 1.8)
+                        'pos': (draw_x - 8, draw_y - h * 1.54)
                     })
                 elif self.world_grid[i][j] == "r2":
                     draw_x = pivot_x + (j - i) * half_w - half_w
@@ -411,7 +423,7 @@ class Game:
         start_node = None
 
         for i in range(grid_size):
-            for j in range(grid_size): 
+            for j in range(grid_size):
                 val = world_grid[i][j]
                 
                 if val not in [1, -1]:
@@ -522,6 +534,8 @@ class Game:
             self.clock.tick(60)
 
 # ========
+
 if __name__ == "__main__":
     q = Game()
     q.run_app()
+
