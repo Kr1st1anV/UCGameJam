@@ -423,7 +423,7 @@ class Game:
         start_node = None
 
         for i in range(grid_size):
-            for j in range(grid_size):
+            for j in range(grid_size): 
                 val = world_grid[i][j]
                 
                 if val not in [1, -1]:
@@ -534,7 +534,6 @@ class Game:
             self.clock.tick(60)
 
 # ========
-
 if __name__ == "__main__":
     q = Game()
     q.run_app()
