@@ -392,6 +392,7 @@ class Game:
         self.surface.blit(self.mobs_text, (750, 30))
         self.surface.blit(self.points_text, (750, 80))
         self.surface.blit(self.units_text, (1130, 550))
+        self.surface.blit(self.load_world('settingsbutton.png'), (700, 50))
 
     def get_object_layers(self):
         w, h = self.spriteSize
