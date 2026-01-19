@@ -832,12 +832,7 @@ class Game:
                                 self.edit_mode = False
                                 self.round_active = True
                                 self.round_ended = False
-<<<<<<< HEAD
-                                self.mobs_to_spawn = 10 
-=======
                                 self.mobs_to_spawn = self.mob_spawn_number[self.wave-1]
->>>>>>> cdb4e0a76cf7678a7e9a1b566502436b6d5b7001
-                                # Set timer to trigger SPAWN_MOB_EVENT every 1000ms (1 second)
                                 pygame.time.set_timer(self.SPAWN_MOB_EVENT, 1000)
 
                     elif event.type == self.SPAWN_MOB_EVENT:
