@@ -141,6 +141,8 @@ class Game:
         self.paths_remaining = MAX_TILES
         self.reset_grid()
         self.edit_mode = True
+        self.build = True
+        self.wave = 1
 
         self.highlight = True
 
@@ -236,7 +238,7 @@ class Game:
         self.active_clouds = []
         
         # Spawn a few initial clouds so the sky isn't empty at the start
-        for _ in range(3):
+        for _ in range(1):
             self.spawn_cloud(random.randint(0, 700))
 
     def update_and_draw_clouds(self):
@@ -350,7 +352,7 @@ class Game:
                         else:
                             self.surface.blit(self.tiles["grey"], (draw_x, draw_y)) # Grey
                     elif self.world_grid[i][j] == "l1" or self.world_grid[i][j] == "b2":
-                        self.surface.blit(self.tiles["path"], (draw_x, draw_y)) # Red
+                        self.surface.blit(self.tiles["red"], (draw_x, draw_y)) # Red
                     elif self.world_grid[i][j] == -3:
                         self.surface.blit(self.tiles["white"], (draw_x, draw_y)) # White
                     elif self.world_grid[i][j] == -9:
@@ -517,7 +519,7 @@ class Game:
                         'type': 'ladybug', 
                         'surf': bee_surf, 
                         # Added bobbing_offset to the Y position
-                        'pos': (draw_x, (draw_y - h * 1.2) + bobbing_offset)
+                        'pos': (draw_x - 10, (draw_y - h * 1.2) + bobbing_offset)
                     })
                     
                 elif self.world_grid[i][j] == -9:
@@ -553,7 +555,7 @@ class Game:
     def draw_window(self) -> None:
         if self.showing_start_screen:
             self.start_screen.draw()
-            self.start_screen.buttons()
+            self.start_screen.draw_buttons()
             pygame.display.update()
         else:
             self.surface.fill(self.bgcolor)
@@ -690,20 +692,22 @@ class Game:
                 if event.type == pygame.QUIT:
                     self.quit_app()
                 if self.showing_start_screen:
-                    if event.type == pygame.KEYDOWN or event.type == pygame.MOUSEBUTTONDOWN:
+                    if event.type == pygame.MOUSEBUTTONDOWN:
+                        action = self.start_screen.check_click(event.pos)
+                        if action == "START":
                             self.showing_start_screen = False
                 else:
                     if event.type == pygame.MOUSEMOTION:
                         self.x, self.y = event.pos
                     elif event.type == pygame.MOUSEBUTTONDOWN: # 1 is left, 3 is right
                         if event.button == 1:
-                            self.set_path = True
-                        elif event.button == 3:
-                            self.rm_path = True
+                            if self.build:
+                                self.set_path = True
+                            else:
+                                self.rm_path = True
                     elif event.type == pygame.MOUSEBUTTONUP:
                         if event.button == 1:
                             self.set_path = False
-                        elif event.button == 3:
                             self.rm_path = False
                     elif event.type == pygame.KEYDOWN:
                         if event.key == pygame.K_r:
@@ -711,16 +715,22 @@ class Game:
                                 self.reset_grid()
                                 self.edit_mode = True
                                 self.round_active = False
+                        if event.key == pygame.K_b:
+                            self.build = not self.build
                         if event.key == pygame.K_1:
                             self.selected_mob_type = 0
                         if event.key == pygame.K_2:
-                            self.selected_mob_type = 1
+                            if self.wave >= 2:
+                                self.selected_mob_type = 1
                         if event.key == pygame.K_3:
-                            self.selected_mob_type = 2
+                            if self.wave >= 4:
+                                self.selected_mob_type = 2
                         if event.key == pygame.K_4:
-                            self.selected_mob_type = 3
+                            if self.wave >= 8:
+                                self.selected_mob_type = 3
                         if event.key == pygame.K_5:
-                            self.selected_mob_type = 4
+                            if self.wave >= 12:
+                                self.selected_mob_type = 4
                         if event.key == pygame.K_SPACE:
                             if self.is_grid_valid(self.world_grid, GRID_SIZE) and not self.round_active and self.round_ended:
                                 self.edit_mode = False
@@ -745,13 +755,14 @@ class Game:
                 self.round_active = False
                 self.round_ended = True
                 self.edit_mode = True
+                self.wave += 1
                 # Optional: self.paths_remaining = MAX_TILES # Reset tiles for next round?
 
             self.draw_window()
             if self.showing_start_screen:
                 self.clock.tick(15)
-            else:
-                self.clock.tick(60)
+                continue
+            self.clock.tick(60)
 
 
 # ========
