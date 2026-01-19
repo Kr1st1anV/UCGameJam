@@ -27,10 +27,12 @@ class StartScreen:
         self.animation_counter = 0
         ##################################################################
         self.start_img = self.load_image('start.png')
-        full_rect = self.start_img.get_rect(topleft=(505, 190))
+        self.start_img = pygame.transform.scale(self.start_img, (int(self.start_img.get_width() * 0.7), int(self.start_img.get_height() * 0.7)))
+        full_rect = self.start_img.get_rect(topleft=(850, 190))
         self.start_hitbox = full_rect.inflate(-180, -170)
         ##################################################################
         self.settings_img = self.load_image('settings.png')
+        self.settings_img = pygame.transform.scale(self.settings_img, (int(self.settings_img.get_width() * 0.7), int(self.settings_img.get_height() * 0.7)))
         settings_full_rect = self.settings_img.get_rect(topleft=(610, 500))
         self.settings_hitbox = settings_full_rect.inflate(-100, -100)
 
@@ -41,6 +43,7 @@ class StartScreen:
 
         ##################################################################
         self.logo_img = self.load_image('Heliosylva.png')
+        self.logo_img = pygame.transform.scale(self.logo_img, (int(self.logo_img.get_width() * 0.7), int(self.logo_img.get_height() * 0.7)))
 
         self.start_rect = self.start_img.get_rect(topleft=(500, 200))
         self.settings_rect = self.settings_img.get_rect(topleft=(610, 500))
@@ -62,21 +65,17 @@ class StartScreen:
 
     def draw_buttons(self):
         """Draws the buttons and the logo on top of the animation"""
-        #pygame.draw.rect(self.surface, (255, 0, 0), self.start_hitbox, 5) # Red outline
-        #pygame.draw.rect(self.surface, (255, 0, 0), self.tutorial_hitbox, 5)
-        #pygame.draw.rect(self.surface, (255, 0, 0), self.settings_hitbox, 5)
+        pygame.draw.rect(self.surface, (255, 0, 0), self.start_hitbox, 5) # Red outline
+        pygame.draw.rect(self.surface, (255, 0, 0), self.settings_hitbox, 5)
 
 ####################################################################################################################################
-        self.surface.blit(self.logo_img, (0, -50))
+        self.surface.blit(self.logo_img, (0, 0))
         self.surface.blit(self.start_img, self.start_rect)
-        self.surface.blit(self.tutorial_img, self.tutorial_rect)
         self.surface.blit(self.settings_img, self.settings_rect)
 
     def check_click(self, mouse_pos):
         if self.start_hitbox.collidepoint(mouse_pos):
             return "START"
-        if self.tutorial_rect.collidepoint(mouse_pos):
-            return "START"
         if self.settings_rect.collidepoint(mouse_pos):
-            return "START"
+            return "SETTINGS"
         return None
