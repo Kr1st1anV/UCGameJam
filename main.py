@@ -174,6 +174,22 @@ class Game:
         path = os.path.join(TOWERS_DIR, name)
         return pygame.image.load(path).convert_alpha()
     
+    def initiate_tree_health_bars(self):
+        self.health_frames = []
+        # The specific percentages you mentioned
+        self.health_steps = [100, 90, 80, 70, 60, 50, 40, 30, 20, 10, 1, 0]
+        
+        for percent in self.health_steps:
+            # Assumes files are named '100.png', '90.png', etc.
+            path = os.path.join(os.path.dirname(__file__), 'tree_health', f'hb{percent}.png')
+            img = pygame.image.load(path).convert_alpha()
+            # Scale it to a size that fits above your tree
+            img = pygame.transform.scale(img, (int(img.get_width() * 0.7), int(img.get_height() * 0.7)))
+            self.health_frames.append(img)
+            
+        # Initialize the tree health variable
+        self.tree_health = 100
+    
     def initiate_blocks(self):
         scale_factor = 1.5
         self.tiles = {}
@@ -278,6 +294,7 @@ class Game:
         self.initiate_blocks()
         self.initiate_towers()
         self.initiate_clouds()
+        self.initiate_tree_health_bars()
         self.run_event_loop()
 
     def quit_app(self) -> None:
@@ -455,7 +472,7 @@ class Game:
         scroll = self.load_world('emptyscroll.png')
         scale_fix_scroll = pygame.transform.scale(scroll, (int(scroll.get_width() * 0.35), int(scroll.get_height() * 0.35)))
 
-        self.font = pygame.font.Font(None, 35)
+        self.font = pygame.font.Font("fonts\Dico.ttf", 35)
         self.mobs_text = self.font.render(f'Mobs: {self.mobs_to_spawn}', True, (0, 0, 0))
         self.points_text = self.font.render(f'Points: {self.points}', True, (0, 0, 0))
         self.units_text = self.font.render(f'Units:', True, (0, 0, 0))
@@ -463,10 +480,27 @@ class Game:
         self.surface.blit(self.points_text, (730, 80))
         self.surface.blit(self.units_text, (1130, 550))
 
-        self.surface.blit(self.load_world('settingsbutton.png'), (800, 0))
+        self.surface.blit(self.load_world('settingsbutton.png'), (775, 650))
         self.surface.blit(scale_fix_boe, (673, 440))
         self.surface.blit(scale_fix_bol, (673, 350))
-        self.surface.blit(scale_fix_scroll, (670, 230))
+        #self.surface.blit(scale_fix_scroll, (670, 230)) THIS IS THE SCROLL
+    
+    def get_health_frame(self):
+        current_pct = max(0, self.tree_health)
+        
+        for i, step in enumerate(self.health_steps):
+            if current_pct >= step:
+                return self.health_frames[i]
+        
+        return self.health_frames[-1]
+    
+    def draw_tree_of_life(self):
+        if self.tree_health > 0:
+            current_health_img = self.get_health_frame()
+            self.surface.blit(current_health_img, (40, 630))
+        else:
+            # Logic for Game Over could go here
+            pass
 
     def get_object_layers(self):
         w, h = self.spriteSize
@@ -573,6 +607,7 @@ class Game:
             self.tree_life = self.load_world("tree_of_life.png")
             self.tree_life_img = pygame.transform.scale(self.tree_life,(int(self.tree_life.get_width() * 1.5), int(self.tree_life.get_height() * 1.5)))
             self.surface.blit(self.tree_life_img, (250, 30))
+            self.draw_tree_of_life()
             #self.surface.blit(self.load_image('red.png'), (800, 600))
             #self.surface.blit(self.load_image('purple.png'), (840, 600))
             #self.surface.blit(self.load_image('water.png'), (880, 600))
@@ -585,7 +620,7 @@ class Game:
                 
                 finished_mobs = [m for m in self.mobs if m.at_end]
                 for m in finished_mobs:
-                    self.points += m.dmg
+                    self.tree_health -= m.dmg
                 
                 self.mobs = [m for m in self.mobs if not m.at_end]
                 
@@ -613,12 +648,10 @@ class Game:
                 elif item['type'] == 'mob':
                     item['obj'].draw(self.surface)
 
-            self.font = pygame.font.Font(None, 35)
+            self.font = pygame.font.Font("fonts\Dico.ttf", 25)
             #self.surface.blit(self.path_icon, (50, 640))
-            self.text = self.font.render(f'Tiles', True, (0, 0, 0))
-            self.surface.blit(self.text, (750, 450))
-            self.text = self.font.render(f'Remaining: {self.paths_remaining}', True, (0, 0, 0))
-            self.surface.blit(self.text, (750, 485))
+            self.text = self.font.render(f'Tiles Remaining: {self.paths_remaining}', True, (0, 0, 0))
+            self.surface.blit(self.text, (700, 300))
             
             self.draw_UI()
             pygame.display.update()
