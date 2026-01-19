@@ -3,7 +3,7 @@ import sys
 import pygame
 import copy
 import numpy as np
-import maps as Maps
+import maps
 import random
 
 DEFAULT_BGCOLOR = (137, 207, 240)
@@ -18,11 +18,11 @@ MOBS_DIR = os.path.join(os.path.dirname(__file__), 'mobs')
 
 rgb = tuple[int,int,int]
 num = random.randint(1,5)
-#PRESET_WORLD = maps.levels[1]
+PRESET_WORLD = maps.Maps().levels[1]
 
 #SPRITES_DIR = os.path.join(ASSETS_DIR, 'sprites')
 
-
+'''
 PRESET_WORLD = [[0, -1, 0, 0, "l1", 0, 0, 0, 0, 0], 
                 [0, 0, 0, 0, 0, 0, "b2", 0, 0, 0], 
                 [0, 0, 0, 0, 0, 0, 0, 0, "b2", 0], 
@@ -33,7 +33,7 @@ PRESET_WORLD = [[0, -1, 0, 0, "l1", 0, 0, 0, 0, 0],
                 [0, 0, 0, 0, 0, 0, 0, "b2", 0, 0], 
                 [0, 0, 0, 0, "l1", 0, 0, 0, 0, -8], 
                 [0, 0, 0, 0, 0, 0, 0, 0, 0, -1]]
-
+'''
 class Mob:
     def __init__(self, grid_coords, sprite_size, pivot_x, pivot_y):
         self.health = 10
