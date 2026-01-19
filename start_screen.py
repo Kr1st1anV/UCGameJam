@@ -45,7 +45,7 @@ class StartScreen:
         self.logo_img = self.load_image('Heliosylva.png')
         self.logo_img = pygame.transform.scale(self.logo_img, (int(self.logo_img.get_width() * 0.7), int(self.logo_img.get_height() * 0.7)))
 
-        self.start_rect = self.start_img.get_rect(topleft=(500, 200))
+        self.start_rect = self.start_img.get_rect(topleft=(600, 200))
         self.settings_rect = self.settings_img.get_rect(topleft=(610, 500))
         self.tutorial_rect = self.tutorial_img.get_rect(topleft=(620, 400))
 
