@@ -309,6 +309,8 @@ class Game:
 
         grid_i, grid_j = int(np.floor(mouse_i)), int(np.floor(mouse_j))
 
+        self.hovered_tower_type = None 
+
         for i in range(GRID_SIZE):
             for j in range(GRID_SIZE):
 
@@ -316,6 +318,11 @@ class Game:
                 draw_y = pivot_y + (j + i) * half_h
 
                 # Hover effect
+                # For Towers
+                if i == grid_i and j == grid_j:
+                    tile_value = self.world_grid[i][j]
+                    if tile_value in [-9, -8, "b2", "l1"]:
+                        self.hovered_tower_type = tile_value
                 if self.edit_mode and type(self.world_grid[i][j]) == int and self.world_grid[i][j] >= 0 and i == grid_i and j == grid_j:
                     #draw_y -= 10
                     self.highlight = True
@@ -570,25 +577,30 @@ class Game:
         for i in range(GRID_SIZE):
             for j in range(GRID_SIZE):
                 # Inside get_object_layers loop for 'b2' (Bee) or 'l1' (Ladybug):
-                if self.world_grid[i][j] == "b2":
+                tile_val = self.world_grid[i][j]
+            
+                if tile_val in ["b2", "l1"]:
                     draw_x = pivot_x + (j - i) * half_w - half_w
                     draw_y = pivot_y + (j + i) * half_h
-                    state_info = self.tower_states.get((i, j), {"frame": 0, "status": "idle", "flip": False})
-                    t_type = "bee"
-                    frames_list = self.tower_data[t_type][state_info["status"]]
                     
-                    if len(frames_list) > 0:
-                        frame_idx = int(state_info["frame"]) % len(frames_list)
-                        surf = frames_list[frame_idx]
+                    t_type = "bee" if tile_val == "b2" else "ladybug"
+                    state_info = self.tower_states.get((i, j), {"frame": 0, "status": "idle", "flip": False})
+                    
+                    # Get the current frame
+                    frames = self.tower_data[t_type][state_info["status"]]
+                    if len(frames) > 0:
+                        surf = frames[int(state_info["frame"]) % len(frames)].copy()
                         
-                        # Apply the flip based on the tracking logic
+                        # --- GLOBAL HIGHLIGHT LOGIC ---
+                        # If this tower type is the one we are hovering over, dim ALL of them
+                        if tile_val == self.hovered_tower_type:
+                            surf.set_alpha(150) # Highlighted look
+                        else:
+                            surf.set_alpha(255) # Normal look
+                        # ------------------------------
+
                         if state_info["flip"]:
                             surf = pygame.transform.flip(surf, True, False)
-
-                        if i == grid_i and j == grid_j:
-                            surf.set_alpha(100)
-                        else:
-                            surf.set_alpha(255)
 
                         tree_elements.append({
                             'z': draw_y, 
@@ -596,88 +608,38 @@ class Game:
                             'surf': surf, 
                             'pos': (draw_x, (draw_y - h * 1.2) + bobbing_offset)
                         })
-                elif self.world_grid[i][j] == "l1":
+                if tile_val in [-8, -9]:
                     draw_x = pivot_x + (j - i) * half_w - half_w
                     draw_y = pivot_y + (j + i) * half_h
-                    state_info = self.tower_states.get((i, j), {"frame": 0, "status": "idle", "flip": False})
-                    t_type = "ladybug"
-                    frames_list = self.tower_data[t_type][state_info["status"]]
                     
-                    if len(frames_list) > 0:
-                        frame_idx = int(state_info["frame"]) % len(frames_list)
-                        surf = frames_list[frame_idx]
+                    t_type = "tree" if tile_val == -9 else "bush"
+                    state_info = self.tower_states.get((i, j), {"frame": 0, "status": "idle", "flip": False})
+                    
+                    # Get the current frame
+                    frames = self.tower_data[t_type][state_info["status"]]
+                    if len(frames) > 0:
+                        surf = frames[int(state_info["frame"]) % len(frames)].copy()
+
+                        if tile_val == -9:
+                            surf = pygame.transform.scale(surf,(int(surf.get_width() * 2), int(surf.get_height() * 2)))
                         
-                        # Apply the flip based on the tracking logic
+                        # --- GLOBAL HIGHLIGHT LOGIC ---
+                        # If this tower type is the one we are hovering over, dim ALL of them
+                        if tile_val == self.hovered_tower_type:
+                            surf.set_alpha(150) # Highlighted look
+                        else:
+                            surf.set_alpha(255) # Normal look
+                        # ------------------------------
+
                         if state_info["flip"]:
                             surf = pygame.transform.flip(surf, True, False)
-
-                        if i == grid_i and j == grid_j:
-                            surf.set_alpha(100)
-                        else:
-                            surf.set_alpha(255)
-
+                        pos = (draw_x - w * 0.5, (draw_y - h * 1.3)) if tile_val == -9 else (draw_x + 5, draw_y - h * 0.35)
                         tree_elements.append({
                             'z': draw_y, 
                             'type': t_type, 
                             'surf': surf, 
-                            'pos': (draw_x, (draw_y - h * 1.2) + bobbing_offset)
-                        })
-                    
-                elif self.world_grid[i][j] == -9:
-                    draw_x = pivot_x + (j - i) * half_w - half_w
-                    draw_y = pivot_y + (j + i) * half_h
-                    state_info = self.tower_states.get((i, j), {"frame": 0, "status": "idle", "flip": False})
-                    t_type = "tree"
-                    frames_list = self.tower_data[t_type][state_info["status"]]
-                    
-                    if len(frames_list) > 0:
-                        frame_idx = int(state_info["frame"]) % len(frames_list)
-                        surf = frames_list[frame_idx]
-
-                        surf = pygame.transform.scale(surf,(int(surf.get_width() * 2), int(surf.get_height() * 2)))
-                        
-                        # Apply the flip based on the tracking logic
-                        if state_info["flip"]:
-                            surf = pygame.transform.flip(surf, True, False)
-
-                        if i == grid_i and j == grid_j:
-                            surf.set_alpha(100)
-                        else:
-                            surf.set_alpha(255)
-
-                        tree_elements.append({
-                            'z': draw_y, 
-                            'type': t_type, 
-                            'surf': surf, 
-                            'pos': (draw_x - w * 0.5, (draw_y - h * 1.3))
-                        })
-
-                elif self.world_grid[i][j] == -8:
-                    draw_x = pivot_x + (j - i) * half_w - half_w
-                    draw_y = pivot_y + (j + i) * half_h
-                    state_info = self.tower_states.get((i, j), {"frame": 0, "status": "idle", "flip": False})
-                    t_type = "bush"
-                    frames_list = self.tower_data[t_type][state_info["status"]]
-                    
-                    if len(frames_list) > 0:
-                        frame_idx = int(state_info["frame"]) % len(frames_list)
-                        surf = frames_list[frame_idx]
-                        
-                        # Apply the flip based on the tracking logic
-                        if state_info["flip"]:
-                            surf = pygame.transform.flip(surf, True, False)
-
-                        if i == grid_i and j == grid_j:
-                            surf.set_alpha(100)
-                        else:
-                            surf.set_alpha(255)
-
-                        tree_elements.append({
-                            'z': draw_y, 
-                            'type': t_type, 
-                            'surf': surf, 
-                            'pos': (draw_x + 5, draw_y - h * 0.35)
-                        })
+                            'pos': pos
+                        })   
                 # elif self.world_grid[i][j] == -8:
                 #     draw_x = pivot_x + (j - i) * half_w - half_w
                 #     draw_y = pivot_y + (j + i) * half_h
