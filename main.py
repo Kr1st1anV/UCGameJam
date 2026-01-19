@@ -77,6 +77,9 @@ class Mob:
         self.target_idx = 1
         self.speed = 1.0
         self.at_end = False
+
+        self.mobframes_right = [self.load_mob(f) for f in self.mobtype[self.randmob]]
+        self.mobframes_left = [pygame.transform.flip(f, True, False) for f in self.mobframes_right]
     
     def load_mob(self, name):
         path = os.path.join(MOBS_DIR, name)
@@ -105,10 +108,11 @@ class Mob:
         if self.target_idx < len(self.waypoints):
             target = self.waypoints[self.target_idx]
             if target.x < self.pos.x:
-                current_sprite = pygame.transform.flip(current_sprite, True, False)
+                current_sprite = self.mobframes_left[self.current_frame]
+            else:
+                current_sprite = self.mobframes_right[self.current_frame]
 
-        sprite_rect = current_sprite.get_rect()
-        sprite_rect.center = (self.pos.x, self.pos.y)
+        sprite_rect = current_sprite.get_rect(center=(self.pos.x, self.pos.y))
         surface.blit(current_sprite, sprite_rect)
 
         if self.health > 0:
@@ -211,33 +215,19 @@ class Game:
 
     def initiate_towers(self):
         scale_factor = 1.5
-        self.towers = {}
-        self.bee_frames = []
-        self.ladybug_frames = []
-        
-        for root, dirs, files in os.walk(TOWERS_DIR):
-            all_files = sorted(files)
-            for file in all_files:
-                name = file.split(".")[0]
-                temp_sprite = self.load_towers(file)
-                scaled_sprite = pygame.transform.scale(temp_sprite, (int(temp_sprite.get_width() * scale_factor), int(temp_sprite.get_height() * scale_factor)))
-                
-                self.towers[name] = scaled_sprite
-                
-                if "bee" in name:
-                    self.bee_frames.append(scaled_sprite)
-                
-                if "ladybug" in name:
-                    self.ladybug_frames.append(scaled_sprite)
+        self.tower_data = {} # Stores frames: self.tower_data["bee"]["idle"] = [...]
+        self.tower_states = {} # Stores cooldowns: self.tower_states[(i, j)] = last_attack_time
 
-        self.bush_sprite = self.load_towers('bush.png')
-        self.towers["bush"] = pygame.transform.scale(self.bush_sprite, (int(self.bush_sprite.get_width() * 1.5), int(self.bush_sprite.get_height() * 1.5)))
-        
-        self.towerSize = (self.towers["bee1"].get_width(), self.towers["bee1"].get_height())
-        self.h_towers = {name : self.highlight_block(tower) for name, tower in self.towers.items()}
-        
-        self.bee_anim_index = 0
-        self.bee_anim_timer = 0
+        for t_type in ["bee", "ladybug"]:
+            self.tower_data[t_type] = {"idle": [], "attack": []}
+            for state in ["idle", "attack"]:
+                folder = os.path.join(TOWERS_DIR, t_type, state) # e.g., towers/bee/attack/
+                if os.path.exists(folder):
+                    files = sorted(os.listdir(folder))
+                    for f in files:
+                        img = pygame.image.load(os.path.join(folder, f)).convert_alpha()
+                        scaled = pygame.transform.scale(img, (int(img.get_width() * scale_factor), int(img.get_height() * scale_factor)))
+                        self.tower_data[t_type][state].append(scaled)
 
     def initiate_clouds(self):
         self.clouds = {}
@@ -461,6 +451,56 @@ class Game:
 
         tile_name = mapping.get(key, "path") 
         return self.tiles.get(tile_name, self.tiles["path"])
+    
+
+    # Tower Mechanics
+    def handle_tower_logic(self):
+        now = pygame.time.get_ticks()
+        stats = {"b2": [150, 5, 1000], "l1": [120, 3, 800]} 
+        
+        w, h = self.spriteSize
+        half_w, half_h = w / 2, h / 4
+        pivot_x, pivot_y = DEFAULT_WIDTH / 3, 125 * 2.6
+
+        for i in range(GRID_SIZE):
+            for j in range(GRID_SIZE):
+                tile = self.world_grid[i][j]
+                if tile in stats:
+                    t_type = "bee" if tile == "b2" else "ladybug"
+                    tower_key = (i, j)
+                    
+                    if tower_key not in self.tower_states:
+                        # Added 'flip': False to the initial state
+                        self.tower_states[tower_key] = {"last_atk": 0, "frame": 0, "status": "idle", "flip": False}
+
+                    t_pos = pygame.Vector2(pivot_x + (j - i) * half_w, pivot_y + (j + i) * half_h - (h * 1.2))
+                    in_range = [m for m in self.mobs if t_pos.distance_to(m.pos) <= stats[tile][0]]
+                    
+                    if in_range:
+                        target = max(in_range, key=lambda m: m.target_idx)
+                        
+                        # --- NEW TRACKING LOGIC ---
+                        # If mob's x is less than tower's x, it's on the left
+                        if target.pos.x < t_pos.x:
+                            self.tower_states[tower_key]["flip"] = True
+                        else:
+                            self.tower_states[tower_key]["flip"] = False
+                        # --------------------------
+
+                        if now - self.tower_states[tower_key]["last_atk"] > stats[tile][2]:
+                            target.health -= stats[tile][1]
+                            self.tower_states[tower_key]["last_atk"] = now
+                            self.tower_states[tower_key]["status"] = "attack"
+                            self.tower_states[tower_key]["frame"] = 0
+                    
+                    # Update animation frame
+                    state = self.tower_states[tower_key]["status"]
+                    self.tower_states[tower_key]["frame"] += 0.15
+                    if self.tower_states[tower_key]["frame"] >= len(self.tower_data[t_type][state]):
+                        self.tower_states[tower_key]["frame"] = 0
+                        if state == "attack":
+                            self.tower_states[tower_key]["status"] = "idle"
+                            # pygame.draw.line(self.surface, (255, 255, 0), tower_pos, target_mob.pos, 2)
 
 
     
@@ -523,11 +563,7 @@ class Game:
         rel_x, rel_y = self.x - pivot_x, self.y - pivot_y
         mouse_j = (rel_x / half_w + rel_y / half_h) / 2
         mouse_i = (rel_y / half_h - rel_x / half_w) / 2
-        grid_i, grid_j = int(np.floor(mouse_i)), int(np.floor(mouse_j))
-
-        self.bee_anim_timer += 0.15
-        self.bee_anim_index = int(self.bee_anim_timer % len(self.bee_frames))
-        
+        grid_i, grid_j = int(np.floor(mouse_i)), int(np.floor(mouse_j))        
         # Subtle Up/Down: Sine wave based on time
         # 5 is the pixel height of the bob, 0.005 is the speed
         bobbing_offset = np.sin(pygame.time.get_ticks() * 0.005) * 5
@@ -535,39 +571,49 @@ class Game:
         tree_elements = []
         for i in range(GRID_SIZE):
             for j in range(GRID_SIZE):
+                # Inside get_object_layers loop for 'b2' (Bee) or 'l1' (Ladybug):
                 if self.world_grid[i][j] == "b2":
                     draw_x = pivot_x + (j - i) * half_w - half_w
                     draw_y = pivot_y + (j + i) * half_h
-                    bee_surf = self.bee_frames[self.bee_anim_index].copy()
-                    if i == grid_i and j == grid_j:
-                        bee_surf.set_alpha(100)
-                    else:
-                        bee_surf.set_alpha(255)
-
-                    tree_elements.append({
-                        'z': draw_y, 
-                        'type': 'bee', 
-                        'surf': bee_surf, 
-                        # Added bobbing_offset to the Y position
-                        'pos': (draw_x, (draw_y - h * 1.2) + bobbing_offset)
-                    })
+                    state_info = self.tower_states.get((i, j), {"frame": 0, "status": "idle", "flip": False})
+                    t_type = "bee"
+                    frames_list = self.tower_data[t_type][state_info["status"]]
                     
-                elif self.world_grid[i][j] == "l1":
+                    if len(frames_list) > 0:
+                        frame_idx = int(state_info["frame"]) % len(frames_list)
+                        surf = frames_list[frame_idx]
+                        
+                        # Apply the flip based on the tracking logic
+                        if state_info["flip"]:
+                            surf = pygame.transform.flip(surf, True, False)
+
+                        tree_elements.append({
+                            'z': draw_y, 
+                            'type': t_type, 
+                            'surf': surf, 
+                            'pos': (draw_x, (draw_y - h * 1.2) + bobbing_offset)
+                        })
+                if self.world_grid[i][j] == "l1":
                     draw_x = pivot_x + (j - i) * half_w - half_w
                     draw_y = pivot_y + (j + i) * half_h
-                    bee_surf = self.ladybug_frames[self.bee_anim_index].copy()
-                    if i == grid_i and j == grid_j:
-                        bee_surf.set_alpha(100)
-                    else:
-                        bee_surf.set_alpha(255)
+                    state_info = self.tower_states.get((i, j), {"frame": 0, "status": "idle", "flip": False})
+                    t_type = "ladybug"
+                    frames_list = self.tower_data[t_type][state_info["status"]]
+                    
+                    if len(frames_list) > 0:
+                        frame_idx = int(state_info["frame"]) % len(frames_list)
+                        surf = frames_list[frame_idx]
+                        
+                        # Apply the flip based on the tracking logic
+                        if state_info["flip"]:
+                            surf = pygame.transform.flip(surf, True, False)
 
-                    tree_elements.append({
-                        'z': draw_y, 
-                        'type': 'ladybug', 
-                        'surf': bee_surf, 
-                        # Added bobbing_offset to the Y position
-                        'pos': (draw_x - 10, (draw_y - h * 1.2) + bobbing_offset)
-                    })
+                        tree_elements.append({
+                            'z': draw_y, 
+                            'type': t_type, 
+                            'surf': surf, 
+                            'pos': (draw_x, (draw_y - h * 1.2) + bobbing_offset)
+                        })
                     
                 elif self.world_grid[i][j] == -9:
                     draw_x = pivot_x + (j - i) * half_w - half_w
@@ -583,20 +629,20 @@ class Game:
                         'surf': tree_surf, 
                         'pos': (draw_x - 10, draw_y - h * 1.1)
                     })
-                elif self.world_grid[i][j] == -8:
-                    draw_x = pivot_x + (j - i) * half_w - half_w
-                    draw_y = pivot_y + (j + i) * half_h
-                    tree_surf = self.towers["bush"].copy()
-                    if i == grid_i and j == grid_j:
-                        tree_surf.set_alpha(100)
-                    else:
-                        tree_surf.set_alpha(255)
-                    tree_elements.append({
-                        'z': draw_y, 
-                        'type': 'bush', 
-                        'surf': tree_surf, 
-                        'pos': (draw_x + 5, draw_y - h * 0.35)
-                    })
+                # elif self.world_grid[i][j] == -8:
+                #     draw_x = pivot_x + (j - i) * half_w - half_w
+                #     draw_y = pivot_y + (j + i) * half_h
+                #     tree_surf = self.towers["bush"].copy()
+                #     if i == grid_i and j == grid_j:
+                #         tree_surf.set_alpha(100)
+                #     else:
+                #         tree_surf.set_alpha(255)
+                #     tree_elements.append({
+                #         'z': draw_y, 
+                #         'type': 'bush', 
+                #         'surf': tree_surf, 
+                #         'pos': (draw_x + 5, draw_y - h * 0.35)
+                #     })
         return tree_elements
     
 
@@ -646,6 +692,8 @@ class Game:
                         'type': 'mob', 
                         'obj': mob
                     })
+
+                self.handle_tower_logic()
 
             # Sorts by furthest from screen to closest to screen
             layer_queue.sort(key=lambda item: item['z'])
