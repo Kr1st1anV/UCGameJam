@@ -343,15 +343,15 @@ class Game:
                         sprite = self.get_path_sprite(i, j)
                         self.surface.blit(sprite, (draw_x, draw_y))
                     elif self.world_grid[i][j] == -1:
+                        sprite = self.get_spawn_sprite(i, j)
+                        self.surface.blit(sprite, (draw_x, draw_y))
                         valid_path = self.is_grid_valid(self.world_grid, GRID_SIZE)
                         if valid_path:
-                            self.surface.blit(self.h_tiles["purple"], (draw_x, draw_y)) # Purple Block
+                            #Show a Space bar - Start Round
+                            pass
                         else:
-                            self.surface.blit(self.h_tiles["grey"], (draw_x, draw_y)) # Grey
-                    elif self.world_grid[i][j] == -3:
-                        self.surface.blit(self.h_tiles["white"], (draw_x, draw_y)) # White
-                    elif self.world_grid[i][j] == -9:
-                        self.surface.blit(self.h_tiles["red"], (draw_x, draw_y)) # Tree
+                            pass
+                            #Disable a Space bar - Start Round
                 else:
                     if self.world_grid[i][j] == 0:
                         self.surface.blit(self.tiles["dark_grass"], (draw_x, draw_y)) # Grass
@@ -359,11 +359,15 @@ class Game:
                         sprite = self.get_path_sprite(i, j)
                         self.surface.blit(sprite, (draw_x, draw_y))
                     elif self.world_grid[i][j] == -1:
+                        sprite = self.get_spawn_sprite(i, j)
+                        self.surface.blit(sprite, (draw_x, draw_y))
                         valid_path = self.is_grid_valid(self.world_grid, GRID_SIZE)
                         if valid_path:
-                            self.surface.blit(self.tiles["purple"], (draw_x, draw_y)) # Purple Block
+                            #Show a Space bar - Start Round
+                            pass
                         else:
-                            self.surface.blit(self.tiles["grey"], (draw_x, draw_y)) # Grey
+                            pass
+                            #Disable a Space bar - Start Round
                     elif self.world_grid[i][j] == "l1" or self.world_grid[i][j] == "b2":
                         self.surface.blit(self.tiles["red"], (draw_x, draw_y)) # Red
                     elif self.world_grid[i][j] == -3:
@@ -457,6 +461,33 @@ class Game:
         tile_name = mapping.get(key, "path") 
         return self.tiles.get(tile_name, self.tiles["path"])
     
+    def get_spawn_sprite(self, i, j):
+        # 1. Check neighbors (1 or -1 means a path exists)
+        tl = i > 0 and self.world_grid[i-1][j] in [1, -1]
+        tr = j > 0 and self.world_grid[i][j-1] in [1, -1]
+        bl = j < GRID_SIZE - 1 and self.world_grid[i][j+1] in [1, -1]
+        br = i < GRID_SIZE - 1 and self.world_grid[i+1][j] in [1, -1]
+
+        # 2. Build a key based on which neighbors are True
+        # We will use alphabetical order so 'tl' and 'tr' becomes 'tltr'
+        connections = []
+        if tl: connections.append("tl")
+        if tr: connections.append("tr")
+        if bl: connections.append("bl")
+        if br: connections.append("br")
+        
+        key = "".join(connections)
+
+        mapping = {
+            "tl":       "grey_bl",
+            "tr":       "grey_br",
+            "bl":       "grey_tl",
+            "br":       "grey_tr"
+        }
+
+        tile_name = mapping.get(key, "grey") 
+        return self.tiles.get(tile_name, self.tiles["grey"])
+    
 
     # Tower Mechanics
     def handle_tower_logic(self):
@@ -487,9 +518,9 @@ class Game:
                         # --- NEW TRACKING LOGIC ---
                         # If mob's x is less than tower's x, it's on the left
                         if target.pos.x < t_pos.x:
-                            self.tower_states[tower_key]["flip"] = True
-                        else:
                             self.tower_states[tower_key]["flip"] = False
+                        else:
+                            self.tower_states[tower_key]["flip"] = True
                         # --------------------------
 
                         if now - self.tower_states[tower_key]["last_atk"] > stats[tile][2]:
@@ -594,7 +625,7 @@ class Game:
                         # --- GLOBAL HIGHLIGHT LOGIC ---
                         # If this tower type is the one we are hovering over, dim ALL of them
                         if tile_val == self.hovered_tower_type:
-                            surf.set_alpha(150) # Highlighted look
+                            surf.set_alpha(100) # Highlighted look
                         else:
                             surf.set_alpha(255) # Normal look
                         # ------------------------------
@@ -626,7 +657,7 @@ class Game:
                         # --- GLOBAL HIGHLIGHT LOGIC ---
                         # If this tower type is the one we are hovering over, dim ALL of them
                         if tile_val == self.hovered_tower_type:
-                            surf.set_alpha(150) # Highlighted look
+                            surf.set_alpha(100) # Highlighted look
                         else:
                             surf.set_alpha(255) # Normal look
                         # ------------------------------
