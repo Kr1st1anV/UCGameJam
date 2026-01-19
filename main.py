@@ -107,6 +107,12 @@ class Mob:
         sprite_rect.center = (self.pos.x, self.pos.y)
         surface.blit(current_sprite, sprite_rect)
 
+        if self.health > 0:
+            bar_width = 40
+            health_pct = self.health / self.mob_health_values[self.randmob]
+            pygame.draw.rect(surface, (255, 0, 0), (self.pos.x - 20, self.pos.y - 40, bar_width, 5))
+            pygame.draw.rect(surface, (0, 255, 0), (self.pos.x - 20, self.pos.y - 40, bar_width * health_pct, 5))
+
 class Game:
 
     bgcolor : rgb
@@ -561,11 +567,14 @@ class Game:
         layer_queue.extend(self.get_object_layers())
 
         if self.round_active:
+            self.mobs = [m for m in self.mobs if m.health > 0]
+            
             finished_mobs = [m for m in self.mobs if m.at_end]
-            for _ in finished_mobs:
-                self.points += 1
+            for m in finished_mobs:
+                self.points += m.dmg
             
             self.mobs = [m for m in self.mobs if not m.at_end]
+            
             for mob in self.mobs:
                 mob.update()
                 layer_queue.append({
