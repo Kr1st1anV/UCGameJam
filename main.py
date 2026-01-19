@@ -662,7 +662,7 @@ class Game:
                 elif item['type'] == 'mob':
                     item['obj'].draw(self.surface)
 
-            self.font = pygame.font.Font("fonts\Dico.ttf", 25)
+            self.font = pygame.font.Font(os.path.join(os.path.join(os.path.dirname(__file__), 'fonts'), "Dico.ttf"), 25)
             #self.surface.blit(self.path_icon, (50, 640))
             self.text = self.font.render(f'Tiles Remaining: {self.paths_remaining}', True, (0, 0, 0))
             self.surface.blit(self.text, (700, 300))
