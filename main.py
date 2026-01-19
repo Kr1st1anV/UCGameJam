@@ -153,6 +153,7 @@ class Game:
         self.mobs = [] # List to track all active mobs
         self.selected_mob_type = 0
         self.mobs_to_spawn = 0
+        self.mob_spawn_number = [10,12,12,15,15,20,20,20,20]
         self.points = 0
         pygame.font.init()        
 
@@ -498,7 +499,7 @@ class Game:
         return self.health_frames[-1]
     
     def draw_tree_of_life(self):
-        if self.tree_health > 0 and self.wave <= 40:
+        if self.tree_health > 0 and self.wave <= 20:
             current_health_img = self.get_health_frame()
             self.surface.blit(current_health_img, (40, 630))
         else:
@@ -783,7 +784,11 @@ class Game:
                                 self.edit_mode = False
                                 self.round_active = True
                                 self.round_ended = False
+<<<<<<< HEAD
                                 self.mobs_to_spawn = 10 
+=======
+                                self.mobs_to_spawn = self.mob_spawn_number[self.wave-1]
+>>>>>>> cdb4e0a76cf7678a7e9a1b566502436b6d5b7001
                                 # Set timer to trigger SPAWN_MOB_EVENT every 1000ms (1 second)
                                 pygame.time.set_timer(self.SPAWN_MOB_EVENT, 1000)
 
