@@ -473,9 +473,12 @@ class Game:
         scale_fix_scroll = pygame.transform.scale(scroll, (int(scroll.get_width() * 0.35), int(scroll.get_height() * 0.35)))
 
         self.font = pygame.font.Font("fonts\Dico.ttf", 35)
+        romanNumeral = self.intToRoman(self.wave)
+        self.wave_text = self.font.render("Wave: " + romanNumeral, True, (0, 0, 0))
         self.mobs_text = self.font.render(f'Mobs: {self.mobs_to_spawn}', True, (0, 0, 0))
         self.points_text = self.font.render(f'Points: {self.points}', True, (0, 0, 0))
         self.units_text = self.font.render(f'Units:', True, (0, 0, 0))
+        self.surface.blit(self.wave_text, (50, 70))
         self.surface.blit(self.mobs_text, (730, 30))
         self.surface.blit(self.points_text, (730, 80))
         self.surface.blit(self.units_text, (1130, 550))
@@ -495,12 +498,21 @@ class Game:
         return self.health_frames[-1]
     
     def draw_tree_of_life(self):
-        if self.tree_health > 0:
+        if self.tree_health > 0 and self.wave <= 40:
             current_health_img = self.get_health_frame()
             self.surface.blit(current_health_img, (40, 630))
         else:
-            # Logic for Game Over could go here
+            print("Game Over")
             pass
+
+    def intToRoman(self, num):
+        Roman = ""
+        storeIntRoman = [[1000, "M"], [900, "CM"], [500, "D"], [400, "CD"], [100, "C"], [90, "XC"], [50, "L"], [40, "XL"], [10, "X"], [9, "IX"], [5, "V"], [4, "IV"], [1, "I"]]
+        for i in range(len(storeIntRoman)):
+            while num >= storeIntRoman[i][0]:
+                Roman += storeIntRoman[i][1]
+                num -= storeIntRoman[i][0]
+        return Roman
 
     def get_object_layers(self):
         w, h = self.spriteSize
@@ -585,6 +597,8 @@ class Game:
                         'pos': (draw_x + 5, draw_y - h * 0.35)
                     })
         return tree_elements
+    
+
 
     def draw_window(self) -> None:
         if self.showing_start_screen:
@@ -769,7 +783,7 @@ class Game:
                                 self.edit_mode = False
                                 self.round_active = True
                                 self.round_ended = False
-                                self.mobs_to_spawn = 10 
+                                self.mobs_to_spawn = 0 
                                 # Set timer to trigger SPAWN_MOB_EVENT every 1000ms (1 second)
                                 pygame.time.set_timer(self.SPAWN_MOB_EVENT, 1000)
 
