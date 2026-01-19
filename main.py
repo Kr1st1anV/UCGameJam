@@ -374,7 +374,7 @@ class Game:
 
                     tree_elements.append({
                         'z': draw_y, 
-                        'type': 'bee1', 
+                        'type': 'bee', 
                         'surf': bee_surf, 
                         # Added bobbing_offset to the Y position
                         'pos': (draw_x, (draw_y - h * 0.76) + bobbing_offset)
@@ -469,7 +469,9 @@ class Game:
                 self.surface.blit(item['surf'], item['pos'])
             elif item['type'] == 'bush':
                 self.surface.blit(item['surf'], item['pos'])
-            elif item['type'] == 'bee1':
+            elif item['type'] == 'bee':
+                self.surface.blit(item['surf'], item['pos'])
+            elif item['type'] == 'ladybug':
                 self.surface.blit(item['surf'], item['pos'])
             elif item['type'] == 'mob':
                 item['obj'].draw(self.surface)
