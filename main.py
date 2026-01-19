@@ -465,7 +465,7 @@ class Game:
     
     def draw_UI(self) -> None: 
         #scale fix
-        bookofevil = self.load_world('bookofevilbutton.png')
+        bookofevil = self.load_world('scriptofevilbutton.png')
         scale_fix_boe = pygame.transform.scale(bookofevil, (int(bookofevil.get_width() * 0.7), int(bookofevil.get_height() * 0.7)))
         bookoflife = self.load_world('bookoflifebutton.png')
         scale_fix_bol = pygame.transform.scale(bookoflife, (int(bookoflife.get_width() * 0.7), int(bookoflife.get_height() * 0.7)))
@@ -484,7 +484,7 @@ class Game:
         self.surface.blit(self.units_text, (1130, 550))
 
         self.surface.blit(self.load_world('settingsbutton.png'), (775, 650))
-        self.surface.blit(scale_fix_boe, (673, 440))
+        self.surface.blit(scale_fix_boe, (673, 525))
         self.surface.blit(scale_fix_bol, (673, 350))
         #self.surface.blit(scale_fix_scroll, (670, 230)) THIS IS THE SCROLL
     
