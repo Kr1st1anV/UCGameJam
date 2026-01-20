@@ -60,6 +60,8 @@ class Mob:
             self.randmob = random.randint(0, len(self.mobtype) - 1)
         self.health = self.mob_health_values[self.randmob]
         self.dmg = self.mob_dmg[self.randmob]
+        self.speed = self.mob_speed[self.randmob]
+        self.cost = self.mob_cost[self.randmob]
         print(f"Spawned mob type {self.randmob} with {self.health} health")
         print(f"Spawned mob type {self.randmob} with {self.dmg} dmg")
 
@@ -77,7 +79,6 @@ class Mob:
             
         self.pos = pygame.Vector2(self.waypoints[0]) if self.waypoints else pygame.Vector2(0,0)
         self.target_idx = 1
-        self.speed = 1.0
         self.at_end = False
 
         self.mobframes_right = [self.load_mob(f) for f in self.mobtype[self.randmob]]
@@ -200,7 +201,7 @@ class Game:
             self.health_frames.append(img)
             
         # Initialize the tree health variable
-        self.tree_health = 1000
+        self.tree_health = 200
     
     def initiate_blocks(self):
         scale_factor = 1.5
@@ -501,7 +502,7 @@ class Game:
     # Tower Mechanics
     def handle_tower_logic(self):
         now = pygame.time.get_ticks()
-        stats = {"b2": [150, 5, 1000], "l1": [120, 3, 800]} 
+        stats = {"b2": [150, 0, 1000], "l1": [120, 0, 800]} 
         
         w, h = self.spriteSize
         half_w, half_h = w / 2, h / 4
@@ -591,12 +592,16 @@ class Game:
         return None
 
     def get_health_frame(self):
-        current_pct = max(0, self.tree_health)
+        # Calculate percentage: (current / max) * 100
+        # max_health is 200 based on your initiate_tree_health_bars
+        health_percentage = (self.tree_health / 200) * 100
         
+        # Find the first step that is less than or equal to our current percentage
         for i, step in enumerate(self.health_steps):
-            if current_pct >= step:
+            if health_percentage >= step:
                 return self.health_frames[i]
         
+        # Fallback to the empty bar (last frame)
         return self.health_frames[-1]
     
     def draw_tree_of_life(self):
@@ -931,6 +936,7 @@ class Game:
                             pts = self.get_path_waypoints()
                             new_mob = Mob(pts, self.spriteSize, DEFAULT_WIDTH/2, 50, self.selected_mob_type)
                             self.mobs.append(new_mob)
+                            self.current_branches -= new_mob.cost
                             self.mobs_to_spawn -= 1
                         else:
                             pygame.time.set_timer(self.SPAWN_MOB_EVENT, 0)
@@ -940,6 +946,7 @@ class Game:
                 self.round_active = False
                 self.round_ended = True
                 self.edit_mode = True
+                self.current_branches = int(10 * (1 + (self.wave)/10) ** self.wave) + 1
                 self.wave += 1
                 # Optional: self.paths_remaining = MAX_TILES # Reset tiles for next round?
 
