@@ -11,7 +11,7 @@ DEFAULT_BGCOLOR = (137, 207, 240)
 DEFAULT_WIDTH   = 978
 DEFAULT_HEIGHT  = 750
 GRID_SIZE = 10
-MAX_TILES = 35
+MAX_TILES = 25
 ASSETS_DIR = os.path.join(os.path.dirname(__file__), 'tiles')
 BGROUND_DIR = os.path.join(os.path.dirname(__file__), 'bground')
 TOWERS_DIR = os.path.join(os.path.dirname(__file__), 'towers')
@@ -160,6 +160,10 @@ class Game:
         self.mobs_to_spawn = 0
         self.mob_spawn_number = [10,12,12,15,15,20,20,20,20]
         self.points = 0
+
+        self.branches = [10,10,10]
+        self.current_branches = self.branches[self.wave-1]
+
         pygame.font.init()        
 
     def x_transform(self, x, w, h):
@@ -279,6 +283,8 @@ class Game:
         pygame.display.set_caption("Power Offense")
         self.surface = pygame.display.set_mode((self.width,self.height))
         self.showing_start_screen = True
+        self.showing_settings_screen = False
+        self.showing_instructions_scene = False
         self.start_screen = StartScreen(self.surface)
         self.clock = pygame.time.Clock()
         self.initiate_blocks()
@@ -560,16 +566,19 @@ class Game:
         romanNumeral = self.intToRoman(self.wave)
         self.wave_text = self.font.render("Wave: " + romanNumeral, True, (0, 0, 0))
         self.mobs_text = self.font.render(f'Mobs: {self.mobs_to_spawn}', True, (0, 0, 0))
-        self.points_text = self.font.render(f'Points: {self.points}', True, (0, 0, 0))
+        #self.points_text = self.font.render(f'Points: {self.points}', True, (0, 0, 0))
+        self.branches_text = self.font.render(f':  {self.current_branches}', True, (0, 0, 0))
         self.units_text = self.font.render(f'Units:', True, (0, 0, 0))
         self.surface.blit(self.wave_text, (50, 70))
-        self.surface.blit(self.mobs_text, (730, 30))
-        self.surface.blit(self.points_text, (730, 80))
+        self.surface.blit(self.branches_text, (735, 45))
         self.surface.blit(self.units_text, (1130, 550))
 
-        self.surface.blit(self.load_world('settingsbutton.png'), (775, 650))
-        self.surface.blit(scale_fix_boe, (673, 525))
-        self.surface.blit(scale_fix_bol, (673, 350))
+        
+        # self.settings = self.load_world('settings.png')
+        # self.settings = pygame.transform.scale(self.settings, (int(self.settings.get_width() * 0.7), int(self.settings.get_height() * 0.7)))
+        # self.surface.blit(self.settings, (760, 645))
+        # self.surface.blit(scale_fix_boe, (673, 525))
+        # self.surface.blit(scale_fix_bol, (673, 350))
         #self.surface.blit(scale_fix_scroll, (670, 230)) THIS IS THE SCROLL
     
     def ui_check_click(self, mouse_pos):
@@ -704,6 +713,10 @@ class Game:
         if self.showing_start_screen:
             self.start_screen.draw()
             self.start_screen.draw_buttons()
+            if self.showing_settings_screen:
+                self.start_screen.draw_settings()
+                if self.showing_instructions_scene:
+                    self.start_screen.draw_instructions()
             pygame.display.update()
         else:
             self.surface.fill(self.bgcolor)
@@ -714,13 +727,13 @@ class Game:
             self.island = self.load_world("island.png")
             self.island_image = pygame.transform.scale(self.island,(int(self.island.get_width() * 1), int(self.island.get_height() * 1.2)))
             self.surface.blit(self.island_image, (-100, 0))
-            self.background = self.load_world("wb.png")
+            self.background = self.load_world("UI_play.png")
             self.bg_image = pygame.transform.scale(self.background,(int(self.background.get_width() * 0.7), int(self.background.get_height() * 0.75)))
             self.surface.blit(self.bg_image, (0, 0))
             self.map_grid()
             self.tree_life = self.load_world("tree_of_life.png")
             self.tree_life_img = pygame.transform.scale(self.tree_life,(int(self.tree_life.get_width() * 1.5), int(self.tree_life.get_height() * 1.5)))
-            self.surface.blit(self.tree_life_img, (250, 30))
+            self.surface.blit(self.tree_life_img, (210, 30))
             self.draw_tree_of_life()
             #self.surface.blit(self.load_image('red.png'), (800, 600))
             #self.surface.blit(self.load_image('purple.png'), (840, 600))
@@ -767,7 +780,7 @@ class Game:
             self.font = pygame.font.Font(os.path.join(os.path.join(os.path.dirname(__file__), 'fonts'), "Dico.ttf"), 25)
             #self.surface.blit(self.path_icon, (50, 640))
             self.text = self.font.render(f'Tiles Remaining: {self.paths_remaining}', True, (0, 0, 0))
-            self.surface.blit(self.text, (700, 300))
+            self.surface.blit(self.text, (40, 120))
             
             self.draw_UI()
             pygame.display.update()
@@ -842,9 +855,25 @@ class Game:
                     self.quit_app()
                 if self.showing_start_screen:
                     if event.type == pygame.MOUSEBUTTONDOWN:
-                        action = self.start_screen.check_click(event.pos)
-                        if action == "START":
-                            self.showing_start_screen = False
+                        action = None
+                        if not self.showing_settings_screen and not self.showing_instructions_scene:
+                            action = self.start_screen.check_click(event.pos)
+                            if action == "START":
+                                self.showing_start_screen = False
+                            if action == "SETTINGS":
+                                self.showing_settings_screen = True
+                        elif self.showing_settings_screen and not self.showing_instructions_scene:
+                            action = self.start_screen.check_settings(event.pos)
+                            if action == "INSTRUCTIONS":
+                                self.showing_instructions_scene = True
+                            if action == "CLOSE":
+                                self.showing_instructions_scene = False
+                                self.showing_settings_screen = False
+                        elif self.showing_settings_screen and self.showing_instructions_scene:
+                            action = self.start_screen.check_closing_instructions(event.pos)
+                            if action == "CLOSE":
+                                self.showing_instructions_scene = False
+                                self.showing_settings_screen = True
                 else:
                     if event.type == pygame.MOUSEMOTION:
                         self.x, self.y = event.pos

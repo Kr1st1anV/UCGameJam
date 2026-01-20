@@ -45,9 +45,23 @@ class StartScreen:
         self.logo_img = self.load_image('Heliosylva.png')
         self.logo_img = pygame.transform.scale(self.logo_img, (int(self.logo_img.get_width() * 0.7), int(self.logo_img.get_height() * 0.7)))
 
+        self.settings_page = self.load_image('settingspage.png')
+        self.settings_page = pygame.transform.scale(self.settings_page, (int(self.settings_page.get_width() * 0.8), int(self.settings_page.get_height() * 0.8)))
+
+        self.instr_page = self.load_image('instr_man.png')
+        self.instr_page = pygame.transform.scale(self.instr_page, (int(self.instr_page.get_width() * 0.8), int(self.instr_page.get_height() * 0.8)))
+
         self.start_rect = self.start_img.get_rect(topleft=(640, 160))
         self.settings_rect = self.settings_img.get_rect(topleft=(730, 610))
         self.tutorial_rect = self.tutorial_img.get_rect(topleft=(620, 400))
+
+        close_set_hitbox = self.settings_img.get_rect(topleft=(232, 72))
+        self.close_set_rect = close_set_hitbox.inflate(-200, -90)
+
+        instr_hitbox = self.settings_img.get_rect(topleft=(330, 270))
+        self.instr_rect = instr_hitbox.inflate(-20, -70)
+
+        self.close_instr_rect = self.close_set_rect
 
 
     def load_image(self, name):
@@ -72,6 +86,24 @@ class StartScreen:
         self.surface.blit(self.logo_img, (0, 0))
         self.surface.blit(self.start_img, self.start_rect)
         self.surface.blit(self.settings_img, self.settings_rect)
+    
+    def draw_settings(self):
+        """Draws the buttons and the logo on top of the animation"""
+        
+        #pygame.draw.rect(self.surface, (255, 0, 0), self.settings_hitbox, 5)
+
+####################################################################################################################################
+        self.surface.blit(self.settings_page, (250, 30))
+        #pygame.draw.rect(self.surface, (255, 0, 0), self.instr_rect, 5) # Red outline
+    
+    def draw_instructions(self):
+        """Draws the buttons and the logo on top of the animation"""
+        
+        #pygame.draw.rect(self.surface, (255, 0, 0), self.settings_hitbox, 5)
+
+####################################################################################################################################
+        self.surface.blit(self.instr_page, (250, 30))
+        #pygame.draw.rect(self.surface, (255, 0, 0), self.instr_rect, 5) # Red outline
 
     def check_click(self, mouse_pos):
         if self.start_hitbox.collidepoint(mouse_pos):
@@ -79,3 +111,15 @@ class StartScreen:
         if self.settings_rect.collidepoint(mouse_pos):
             return "SETTINGS"
         return None
+    def check_settings(self, mouse_pos):
+        if self.close_set_rect.collidepoint(mouse_pos):
+            return "CLOSE"
+        if self.instr_rect.collidepoint(mouse_pos):
+            return "INSTRUCTIONS"
+        return None
+    
+    def check_closing_instructions(self, mouse_pos):
+        if self.close_instr_rect.collidepoint(mouse_pos):
+            return "CLOSE"
+        return None
+    
