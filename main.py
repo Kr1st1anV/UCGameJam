@@ -44,24 +44,20 @@ class Mob:
         half_w, half_h = w / 2, h / 4
         pivot_x = DEFAULT_WIDTH /3
         pivot_y = 125 * 2.6
-        self.mobtype = [['worm moving_0001.png', 'worm moving_0002.png', 'worm moving_0003.png', 'worm moving_0004.png'],
+        self.mobcolor = [(200, 50, 50),(93, 63, 211),(0, 255, 255)]
+        self.mobtype = [['dragonfly flying_0001.png', 'dragonfly flying_0002.png', 'dragonfly flying_0003.png', 'dragonfly flying_0004.png']
+                        , ['worm moving_0001.png', 'worm moving_0002.png', 'worm moving_0003.png', 'worm moving_0004.png'],
                         ['butterfly_0001.png', 'butterfly_0002.png', 'butterfly_0003.png', 'butterfly_0004.png'],
-                        ['dragonfly flying_0001.png', 'dragonfly flying_0002.png', 'dragonfly flying_0003.png', 'dragonfly flying_0004.png'],
                         ['snail idle_0001.png', 'snail idle_0002.png', 'snail idle_0003.png', 'snail idle_0004.png'],
                         ['beetle_0001.png', 'beetle_0002.png', 'beetle_0003.png', 'beetle_0004.png']]
-        self.mob_dmg = [1, 5, 10, 20, 50]
-        self.mob_speed = [6, 10, 10, 4, 6]
-        self.mob_health_values = [10, 20, 50, 100, 200]
-        self.mob_cost = [1, 5, 10, 20, 50]
-        
+        self.mob_health_values = [20, 10, 50, 100, 120]
+        self.mob_dmg = [6, 2, 4, 3, 3]
         if mob_type is not None:
             self.randmob = mob_type
         else:
             self.randmob = random.randint(0, len(self.mobtype) - 1)
         self.health = self.mob_health_values[self.randmob]
         self.dmg = self.mob_dmg[self.randmob]
-        self.speed = self.mob_speed[self.randmob]
-        self.cost = self.mob_cost[self.randmob]
         print(f"Spawned mob type {self.randmob} with {self.health} health")
         print(f"Spawned mob type {self.randmob} with {self.dmg} dmg")
 
@@ -79,6 +75,7 @@ class Mob:
             
         self.pos = pygame.Vector2(self.waypoints[0]) if self.waypoints else pygame.Vector2(0,0)
         self.target_idx = 1
+        self.speed = 1.0
         self.at_end = False
 
         self.mobframes_right = [self.load_mob(f) for f in self.mobtype[self.randmob]]
@@ -144,7 +141,10 @@ class Game:
         self.ui_hitboxes = {}
         self.x = 0
         self.y = 0
+        #########
         self.showing_scroll = False
+        self.showing_book = False
+        ########
         self.set_path = False
         self.rm_path = False
         self.paths_remaining = MAX_TILES
@@ -202,7 +202,7 @@ class Game:
             self.health_frames.append(img)
             
         # Initialize the tree health variable
-        self.tree_health = 200
+        self.tree_health = 2500
     
     def initiate_blocks(self):
         scale_factor = 1.5
@@ -503,7 +503,7 @@ class Game:
     # Tower Mechanics
     def handle_tower_logic(self):
         now = pygame.time.get_ticks()
-        stats = {"b2": [150, 0, 1000], "l1": [120, 0, 800]} 
+        stats = {"b2": [150, 5, 1000], "l1": [120, 3, 800]} 
         
         w, h = self.spriteSize
         half_w, half_h = w / 2, h / 4
@@ -556,10 +556,15 @@ class Game:
         bookoflife = self.load_world('bookoflifebutton.png')
         scale_fix_bol = pygame.transform.scale(bookoflife, (int(bookoflife.get_width() * 0.7), int(bookoflife.get_height() * 0.7)))
         scroll = self.load_world('emptyscroll.png')
-        scale_fix_scroll = pygame.transform.scale(scroll, (int(scroll.get_width() * 0.35), int(scroll.get_height() * 0.35)))
+        scale_fix_scroll = pygame.transform.scale(scroll, (int(scroll.get_width() * 0.8), int(scroll.get_height() * 0.8)))
+        book_of_lifeopen = self.load_world('book_life.png')
+        scale_fix_bolo = pygame.transform.scale(book_of_lifeopen, (int(book_of_lifeopen.get_width() * 0.55), int(book_of_lifeopen.get_height() * 0.55)))
 
         if self.showing_scroll:
-            self.surface.blit(scale_fix_scroll, (670, 230))
+            self.surface.blit(scale_fix_scroll, (20, 240))
+
+        if self.showing_book:
+            self.surface.blit(scale_fix_bolo, (-40, 230))
 
         ##### UI PRESS #####
         boe_rect = scale_fix_boe.get_rect(topleft=(673, 525))
@@ -584,8 +589,8 @@ class Game:
         # self.settings = self.load_world('settings.png')
         # self.settings = pygame.transform.scale(self.settings, (int(self.settings.get_width() * 0.7), int(self.settings.get_height() * 0.7)))
         #self.surface.blit(self.settings, (760, 645))
-        self.surface.blit(scale_fix_boe, (673, 525))
-        self.surface.blit(scale_fix_bol, (673, 350))
+        #self.surface.blit(scale_fix_boe, (673, 525))
+        #self.surface.blit(scale_fix_bol, (673, 350))
         #self.surface.blit(scale_fix_scroll, (670, 230)) THIS IS THE SCROLL
     
     def ui_check_click(self, mouse_pos):
@@ -596,16 +601,12 @@ class Game:
         return None
 
     def get_health_frame(self):
-        # Calculate percentage: (current / max) * 100
-        # max_health is 200 based on your initiate_tree_health_bars
-        health_percentage = (self.tree_health / 200) * 100
+        current_pct = max(0, self.tree_health)
         
-        # Find the first step that is less than or equal to our current percentage
         for i, step in enumerate(self.health_steps):
-            if health_percentage >= step:
+            if current_pct >= step:
                 return self.health_frames[i]
         
-        # Fallback to the empty bar (last frame)
         return self.health_frames[-1]
     
     def draw_tree_of_life(self):
@@ -613,10 +614,8 @@ class Game:
             current_health_img = self.get_health_frame()
             self.surface.blit(current_health_img, (40, 630))
         else:
-            if self.tree_health <= 0:
-                self.victory()
-            else:
-                self.defeat()
+            print("Game Over")
+            pass
 
     def intToRoman(self, num):
         Roman = ""
@@ -897,8 +896,13 @@ class Game:
                             if ui_action == "BOOK_OF_EVIL":
                                 print("Book of evil was clicked")
                                 self.showing_scroll = not self.showing_scroll
+                                if self.showing_book is True:
+                                    self.showing_book = not self.showing_book
                             elif ui_action == "BOOK_OF_LIFE":
                                 print("Book of life was clicked")
+                                self.showing_book = not self.showing_book
+                                if self.showing_scroll is True:
+                                    self.showing_scroll = not self.showing_scroll
 ################################################################################################################
                             else:
                                 if self.build:
@@ -945,7 +949,6 @@ class Game:
                             pts = self.get_path_waypoints()
                             new_mob = Mob(pts, self.spriteSize, DEFAULT_WIDTH/2, 50, self.selected_mob_type)
                             self.mobs.append(new_mob)
-                            self.current_branches -= new_mob.cost
                             self.mobs_to_spawn -= 1
                         else:
                             pygame.time.set_timer(self.SPAWN_MOB_EVENT, 0)
@@ -955,7 +958,6 @@ class Game:
                 self.round_active = False
                 self.round_ended = True
                 self.edit_mode = True
-                self.current_branches = int(10 * (1 + (self.wave)/10) ** self.wave) + 1
                 self.wave += 1
                 # Optional: self.paths_remaining = MAX_TILES # Reset tiles for next round?
 
