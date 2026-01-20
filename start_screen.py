@@ -116,6 +116,8 @@ class StartScreen:
             return "CLOSE"
         if self.instr_rect.collidepoint(mouse_pos):
             return "INSTRUCTIONS"
+        if self.instr_rect.collidepoint(mouse_pos):
+            return "INSTRUCTIONS"
         return None
     
     def check_closing_instructions(self, mouse_pos):
