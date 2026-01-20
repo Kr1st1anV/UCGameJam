@@ -151,6 +151,7 @@ class Game:
         self.reset_grid()
         self.edit_mode = True
         self.build = True
+        self.mob_spawn_number = 1000
         self.wave = 1
 
         self.highlight = True
@@ -162,11 +163,9 @@ class Game:
         self.mobs = [] # List to track all active mobs
         self.selected_mob_type = 0
         self.mobs_to_spawn = 0
-        self.mob_spawn_number = [10,12,12,15,15,20,20,20,20]
         self.points = 0
-
-        self.branches = [10,10,10]
-        self.current_branches = self.branches[self.wave-1]
+        self.current_branches = 10
+        self.animation_started = False
 
         pygame.font.init()        
 
@@ -190,33 +189,57 @@ class Game:
     
     def initiate_cutscenes(self):
         self.game_active = True
+        self.game_over = False # Add this line
         self.cutscene_frame = 0
         self.cutscene_images = []
         self.cutscene_timer = 0
         self.animation_speed = 100 # Milliseconds per frame
 
     def load_cutscene(self, folder_name):
-        self.game_active = False
+        # If we already have images, don't load again (prevents double playing)
+        if hasattr(self, 'cutscene_images') and self.cutscene_images:
+            return
+
         self.cutscene_images = []
         path = os.path.join(os.path.dirname(__file__), 'cutscenes', folder_name)
         
-        # Load all images in the folder sorted by name
         files = sorted([f for f in os.listdir(path) if f.endswith('.png')])
         for f in files:
             img = pygame.image.load(os.path.join(path, f)).convert_alpha()
-            # Scale to screen size
             img = pygame.transform.scale(img, (self.width, self.height))
             self.cutscene_images.append(img)
+            
         self.cutscene_frame = 0
+        self.cutscene_timer = pygame.time.get_ticks()
+        
+        # This stops the game loop logic and triggers play_end_animation
+        self.game_active = False
+
+    def play_end_animation(self):
+        if not self.cutscene_images:
+            return
+
+        now = pygame.time.get_ticks()
+        
+        # STOP incrementing if we are at the last frame
+        if self.cutscene_frame < len(self.cutscene_images) - 1:
+            if now - self.cutscene_timer > 100:
+                self.cutscene_timer = now
+                self.cutscene_frame += 1
+        
+        # Stay on the last frame forever
+        self.surface.blit(self.cutscene_images[self.cutscene_frame], (0, 0))
 
     def victory(self):
-        if self.game_active: # Prevent reloading every frame
-            print("Victory! Loading animation...")
+        if not self.animation_started: # Check if we already started
+            self.animation_started = True 
+            self.game_active = False
             self.load_cutscene('victory')
 
     def defeat(self):
-        if self.game_active:
-            print("Defeat! Loading animation...")
+        if not self.animation_started: # Check if we already started
+            self.animation_started = True
+            self.game_active = False
             self.load_cutscene('defeat')
     
     def initiate_tree_health_bars(self):
@@ -233,7 +256,7 @@ class Game:
             self.health_frames.append(img)
             
         # Initialize the tree health variable
-        self.tree_health = 200
+        self.tree_health = 1 #200
     
     def initiate_blocks(self):
         scale_factor = 1.5
@@ -535,7 +558,7 @@ class Game:
     # Tower Mechanics
     def handle_tower_logic(self):
         now = pygame.time.get_ticks()
-        stats = {"b2": [150, 0, 1000], "l1": [120, 0, 800]} 
+        stats = {"b2": [150, 3, 1000], "l1": [120, 5, 800]} 
         
         w, h = self.spriteSize
         half_w, half_h = w / 2, h / 4
@@ -641,6 +664,9 @@ class Game:
         return self.health_frames[-1]
     
     def draw_tree_of_life(self):
+        if self.game_over:
+            return
+        
         if self.tree_health > 0 and self.wave <= 20:
             current_health_img = self.get_health_frame()
             self.surface.blit(current_health_img, (40, 630))
@@ -751,23 +777,6 @@ class Game:
                 #         
                 #     })
         return tree_elements
-    
-    def play_end_animation(self):
-        if not self.cutscene_images:
-            return
-
-        now = pygame.time.get_ticks()
-        if now - self.cutscene_timer > self.animation_speed:
-            self.cutscene_timer = now
-            self.cutscene_frame = (self.cutscene_frame + 1) % len(self.cutscene_images)
-        
-        current_img = self.cutscene_images[self.cutscene_frame]
-        self.surface.blit(current_img, (0, 0))
-        
-        # Optional: Add "Press R to Restart" text overlay
-        font = pygame.font.SysFont("Arial", 30)
-        text = font.render("Press R to return to menu", True, (255, 255, 255))
-        self.surface.blit(text, (self.width // 2 - 150, self.height - 50))
 
     def draw_window(self) -> None:
         if self.showing_start_screen:
@@ -777,10 +786,11 @@ class Game:
                 self.start_screen.draw_settings()
                 if self.showing_instructions_scene:
                     self.start_screen.draw_instructions()
-            pygame.display.update()
+        
         elif not self.game_active:
-            # PLAY CUTSCENE
+            self.surface.fill((0, 0, 0)) # Clean black background
             self.play_end_animation()
+
         else:
             self.surface.fill(self.bgcolor)
             self.background = self.load_world("wbsky.png")
@@ -797,56 +807,39 @@ class Game:
             self.tree_life = self.load_world("tree_of_life.png")
             self.tree_life_img = pygame.transform.scale(self.tree_life,(int(self.tree_life.get_width() * 1.5), int(self.tree_life.get_height() * 1.5)))
             self.surface.blit(self.tree_life_img, (210, 30))
+            
+            # This triggers victory() or defeat() which sets self.game_active = False
             self.draw_tree_of_life()
-            #self.surface.blit(self.load_image('red.png'), (800, 600))
-            #self.surface.blit(self.load_image('purple.png'), (840, 600))
-            #self.surface.blit(self.load_image('water.png'), (880, 600))
 
             layer_queue = []
             layer_queue.extend(self.get_object_layers())
 
             if self.round_active:
                 self.mobs = [m for m in self.mobs if m.health > 0]
-                
                 finished_mobs = [m for m in self.mobs if m.at_end]
                 for m in finished_mobs:
                     self.tree_health -= m.dmg
-                
                 self.mobs = [m for m in self.mobs if not m.at_end]
-                
                 for mob in self.mobs:
                     mob.update()
-                    layer_queue.append({
-                        'z': mob.pos.y, 
-                        'type': 'mob', 
-                        'obj': mob
-                    })
-
+                    layer_queue.append({'z': mob.pos.y, 'type': 'mob', 'obj': mob})
                 self.handle_tower_logic()
 
-            # Sorts by furthest from screen to closest to screen
             layer_queue.sort(key=lambda item: item['z'])
 
-            # Draw based off order
             for item in layer_queue:
-                if item['type'] == 'tree':
-                    self.surface.blit(item['surf'], item['pos'])
-                elif item['type'] == 'bush':
-                    self.surface.blit(item['surf'], item['pos'])
-                elif item['type'] == 'bee':
-                    self.surface.blit(item['surf'], item['pos'])
-                elif item['type'] == 'ladybug':
+                if item['type'] in ['tree', 'bush', 'bee', 'ladybug']:
                     self.surface.blit(item['surf'], item['pos'])
                 elif item['type'] == 'mob':
                     item['obj'].draw(self.surface)
 
             self.font = pygame.font.Font(os.path.join(os.path.join(os.path.dirname(__file__), 'fonts'), "Dico.ttf"), 25)
-            #self.surface.blit(self.path_icon, (50, 640))
             self.text = self.font.render(f'Tiles Remaining: {self.paths_remaining}', True, (0, 0, 0))
             self.surface.blit(self.text, (40, 120))
-            
             self.draw_UI()
-            pygame.display.update()
+
+        # One single update for all states
+        pygame.display.update()
 
     #Optimize This
     def is_grid_valid(self, world_grid, grid_size):
@@ -942,6 +935,7 @@ class Game:
                         self.x, self.y = event.pos
                     elif event.type == pygame.MOUSEBUTTONDOWN: # 1 is left, 3 is right
                         if event.button == 1:
+                            self.set_path = True
                             ui_action = self.ui_check_click(event.pos)
 ################################################################################################################
                             if ui_action == "BOOK_OF_EVIL":
@@ -955,8 +949,13 @@ class Game:
                                     self.set_path = True
                                 else:
                                     self.rm_path = True
+                        if event.button == 3:
+                            self.rm_path = True
                     elif event.type == pygame.MOUSEBUTTONUP:
                         if event.button == 1:
+                            self.set_path = False
+                            self.rm_path = False
+                        elif event.button == 3:
                             self.set_path = False
                             self.rm_path = False
                     elif event.type == pygame.KEYDOWN:
@@ -986,7 +985,7 @@ class Game:
                                 self.edit_mode = False
                                 self.round_active = True
                                 self.round_ended = False
-                                self.mobs_to_spawn = self.mob_spawn_number[self.wave-1]
+                                self.mobs_to_spawn = 1000
                                 pygame.time.set_timer(self.SPAWN_MOB_EVENT, 1000)
 
                     elif event.type == self.SPAWN_MOB_EVENT:
@@ -994,14 +993,15 @@ class Game:
                         if self.mobs_to_spawn > 0:
                             pts = self.get_path_waypoints()
                             new_mob = Mob(pts, self.spriteSize, DEFAULT_WIDTH/2, 50, self.selected_mob_type)
-                            self.mobs.append(new_mob)
-                            self.current_branches -= new_mob.cost
-                            self.mobs_to_spawn -= 1
+                            if self.current_branches - new_mob.cost >= 0:
+                                self.current_branches -= new_mob.cost
+                                self.mobs_to_spawn -= 1
+                                self.mobs.append(new_mob)
                         else:
                             pygame.time.set_timer(self.SPAWN_MOB_EVENT, 0)
                     elif event.type == pygame.KEYUP:
                         pass
-            if self.round_active and self.mobs_to_spawn == 0 and len(self.mobs) == 0:
+            if self.round_active and (self.mobs_to_spawn == 0 or self.current_branches == 0) and len(self.mobs) == 0:
                 self.round_active = False
                 self.round_ended = True
                 self.edit_mode = True
