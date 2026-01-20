@@ -752,7 +752,22 @@ class Game:
                 #     })
         return tree_elements
     
+    def play_end_animation(self):
+        if not self.cutscene_images:
+            return
 
+        now = pygame.time.get_ticks()
+        if now - self.cutscene_timer > self.animation_speed:
+            self.cutscene_timer = now
+            self.cutscene_frame = (self.cutscene_frame + 1) % len(self.cutscene_images)
+        
+        current_img = self.cutscene_images[self.cutscene_frame]
+        self.surface.blit(current_img, (0, 0))
+        
+        # Optional: Add "Press R to Restart" text overlay
+        font = pygame.font.SysFont("Arial", 30)
+        text = font.render("Press R to return to menu", True, (255, 255, 255))
+        self.surface.blit(text, (self.width // 2 - 150, self.height - 50))
 
     def draw_window(self) -> None:
         if self.showing_start_screen:
@@ -763,6 +778,9 @@ class Game:
                 if self.showing_instructions_scene:
                     self.start_screen.draw_instructions()
             pygame.display.update()
+        elif not self.game_active:
+            # PLAY CUTSCENE
+            self.play_end_animation()
         else:
             self.surface.fill(self.bgcolor)
             self.background = self.load_world("wbsky.png")
