@@ -50,7 +50,7 @@ class Mob:
                         ['snail idle_0001.png', 'snail idle_0002.png', 'snail idle_0003.png', 'snail idle_0004.png'],
                         ['beetle_0001.png', 'beetle_0002.png', 'beetle_0003.png', 'beetle_0004.png']]
         self.mob_dmg = [1, 5, 10, 20, 50]
-        self.mob_speed = [3, 5, 5, 2, 3]
+        self.mob_speed = [6, 10, 10, 4, 6]
         self.mob_health_values = [10, 20, 50, 100, 200]
         self.mob_cost = [1, 5, 10, 20, 50]
         
