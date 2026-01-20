@@ -609,8 +609,10 @@ class Game:
             current_health_img = self.get_health_frame()
             self.surface.blit(current_health_img, (40, 630))
         else:
-            print("Game Over")
-            pass
+            if self.tree_health <= 0:
+                self.victory()
+            else:
+                self.defeat()
 
     def intToRoman(self, num):
         Roman = ""
