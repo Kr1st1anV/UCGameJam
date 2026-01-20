@@ -45,7 +45,7 @@ class StartScreen:
         self.logo_img = self.load_image('Heliosylva.png')
         self.logo_img = pygame.transform.scale(self.logo_img, (int(self.logo_img.get_width() * 0.7), int(self.logo_img.get_height() * 0.7)))
 
-        self.settings_page = self.load_image('settingspage.png')
+        self.settings_page = self.load_image('settingsmain.png')
         self.settings_page = pygame.transform.scale(self.settings_page, (int(self.settings_page.get_width() * 0.8), int(self.settings_page.get_height() * 0.8)))
 
         self.instr_page = self.load_image('instr_man.png')
@@ -55,14 +55,14 @@ class StartScreen:
         self.settings_rect = self.settings_img.get_rect(topleft=(730, 610))
         self.tutorial_rect = self.tutorial_img.get_rect(topleft=(620, 400))
 
-        close_set_hitbox = self.settings_img.get_rect(topleft=(232, 72))
+        close_set_hitbox = self.settings_img.get_rect(topleft=(232, 172))
         self.close_set_rect = close_set_hitbox.inflate(-200, -90)
 
-        instr_hitbox = self.settings_img.get_rect(topleft=(330, 270))
+        instr_hitbox = self.settings_img.get_rect(topleft=(330, 340))
         self.instr_rect = instr_hitbox.inflate(-20, -70)
 
-        self.close_instr_rect = self.close_set_rect
-
+        close_instr_hitbox = self.settings_img.get_rect(topleft=(232, 72))
+        self.close_instr_rect = close_instr_hitbox.inflate(-200, -90)
 
     def load_image(self, name):
         path = os.path.join(os.path.dirname(__file__), 'buttons', name)
@@ -90,11 +90,11 @@ class StartScreen:
     def draw_settings(self):
         """Draws the buttons and the logo on top of the animation"""
         
-        #pygame.draw.rect(self.surface, (255, 0, 0), self.settings_hitbox, 5)
+        #pygame.draw.rect(self.surface, (255, 0, 0), self.close_set_rect, 5)
 
 ####################################################################################################################################
-        self.surface.blit(self.settings_page, (250, 30))
-        #pygame.draw.rect(self.surface, (255, 0, 0), self.instr_rect, 5) # Red outline
+        self.surface.blit(self.settings_page, (250, 130))
+        #pygame.draw.rect(self.surface, (255, 0, 0), self.close_set_rect, 5) # Red outline
     
     def draw_instructions(self):
         """Draws the buttons and the logo on top of the animation"""
@@ -103,7 +103,7 @@ class StartScreen:
 
 ####################################################################################################################################
         self.surface.blit(self.instr_page, (250, 30))
-        #pygame.draw.rect(self.surface, (255, 0, 0), self.instr_rect, 5) # Red outline
+        #pygame.draw.rect(self.surface, (255, 0, 0), self.close_instr_rect, 5) # Red outline
 
     def check_click(self, mouse_pos):
         if self.start_hitbox.collidepoint(mouse_pos):
