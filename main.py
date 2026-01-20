@@ -141,6 +141,7 @@ class Game:
         self.ui_hitboxes = {}
         self.x = 0
         self.y = 0
+        self.showing_scroll = False
         self.set_path = False
         self.rm_path = False
         self.paths_remaining = MAX_TILES
@@ -554,6 +555,9 @@ class Game:
         scroll = self.load_world('emptyscroll.png')
         scale_fix_scroll = pygame.transform.scale(scroll, (int(scroll.get_width() * 0.35), int(scroll.get_height() * 0.35)))
 
+        if self.showing_scroll:
+            self.surface.blit(scale_fix_scroll, (670, 230))
+
         ##### UI PRESS #####
         boe_rect = scale_fix_boe.get_rect(topleft=(673, 525))
         self.ui_hitboxes['book_of_evil'] = boe_rect.inflate(-40, -40)
@@ -576,9 +580,9 @@ class Game:
         
         # self.settings = self.load_world('settings.png')
         # self.settings = pygame.transform.scale(self.settings, (int(self.settings.get_width() * 0.7), int(self.settings.get_height() * 0.7)))
-        # self.surface.blit(self.settings, (760, 645))
-        # self.surface.blit(scale_fix_boe, (673, 525))
-        # self.surface.blit(scale_fix_bol, (673, 350))
+        #self.surface.blit(self.settings, (760, 645))
+        self.surface.blit(scale_fix_boe, (673, 525))
+        self.surface.blit(scale_fix_bol, (673, 350))
         #self.surface.blit(scale_fix_scroll, (670, 230)) THIS IS THE SCROLL
     
     def ui_check_click(self, mouse_pos):
@@ -880,10 +884,13 @@ class Game:
                     elif event.type == pygame.MOUSEBUTTONDOWN: # 1 is left, 3 is right
                         if event.button == 1:
                             ui_action = self.ui_check_click(event.pos)
+################################################################################################################
                             if ui_action == "BOOK_OF_EVIL":
                                 print("Book of evil was clicked")
+                                self.showing_scroll = not self.showing_scroll
                             elif ui_action == "BOOK_OF_LIFE":
                                 print("Book of life was clicked")
+################################################################################################################
                             else:
                                 if self.build:
                                     self.set_path = True
