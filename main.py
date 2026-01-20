@@ -44,14 +44,16 @@ class Mob:
         half_w, half_h = w / 2, h / 4
         pivot_x = DEFAULT_WIDTH /3
         pivot_y = 125 * 2.6
-        self.mobcolor = [(200, 50, 50),(93, 63, 211),(0, 255, 255)]
-        self.mobtype = [['dragonfly flying_0001.png', 'dragonfly flying_0002.png', 'dragonfly flying_0003.png', 'dragonfly flying_0004.png']
-                        , ['worm moving_0001.png', 'worm moving_0002.png', 'worm moving_0003.png', 'worm moving_0004.png'],
+        self.mobtype = [['worm moving_0001.png', 'worm moving_0002.png', 'worm moving_0003.png', 'worm moving_0004.png'],
                         ['butterfly_0001.png', 'butterfly_0002.png', 'butterfly_0003.png', 'butterfly_0004.png'],
+                        ['dragonfly flying_0001.png', 'dragonfly flying_0002.png', 'dragonfly flying_0003.png', 'dragonfly flying_0004.png'],
                         ['snail idle_0001.png', 'snail idle_0002.png', 'snail idle_0003.png', 'snail idle_0004.png'],
                         ['beetle_0001.png', 'beetle_0002.png', 'beetle_0003.png', 'beetle_0004.png']]
-        self.mob_health_values = [20, 10, 50, 100, 120]
-        self.mob_dmg = [6, 2, 4, 3, 3]
+        self.mob_dmg = [1, 5, 10, 20, 50]
+        self.mob_speed = [3, 5, 5, 2, 3]
+        self.mob_health_values = [10, 20, 50, 100, 200]
+        self.mob_cost = [1, 5, 10, 20, 50]
+        
         if mob_type is not None:
             self.randmob = mob_type
         else:
@@ -199,7 +201,7 @@ class Game:
             self.health_frames.append(img)
             
         # Initialize the tree health variable
-        self.tree_health = 2500
+        self.tree_health = 1000
     
     def initiate_blocks(self):
         scale_factor = 1.5
