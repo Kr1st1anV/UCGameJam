@@ -151,7 +151,7 @@ class Game:
         self.reset_grid()
         self.edit_mode = True
         self.build = True
-        self.mob_spawn_number = 1000
+        self.mob_spawn_number = [10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10]
         self.wave = 1
 
         self.highlight = True
@@ -985,7 +985,7 @@ class Game:
                                 self.edit_mode = False
                                 self.round_active = True
                                 self.round_ended = False
-                                self.mobs_to_spawn = 1000
+                                self.mobs_to_spawn = self.mob_spawn_number[self.wave-1]
                                 pygame.time.set_timer(self.SPAWN_MOB_EVENT, 1000)
 
                     elif event.type == self.SPAWN_MOB_EVENT:
@@ -993,19 +993,16 @@ class Game:
                         if self.mobs_to_spawn > 0:
                             pts = self.get_path_waypoints()
                             new_mob = Mob(pts, self.spriteSize, DEFAULT_WIDTH/2, 50, self.selected_mob_type)
-                            if self.current_branches - new_mob.cost >= 0:
-                                self.current_branches -= new_mob.cost
-                                self.mobs_to_spawn -= 1
-                                self.mobs.append(new_mob)
+                            self.mobs_to_spawn -= 1
+                            self.mobs.append(new_mob)
                         else:
                             pygame.time.set_timer(self.SPAWN_MOB_EVENT, 0)
                     elif event.type == pygame.KEYUP:
                         pass
-            if self.round_active and (self.mobs_to_spawn == 0 or self.current_branches == 0) and len(self.mobs) == 0:
+            if self.round_active and self.mobs_to_spawn == 0 and len(self.mobs) == 0:
                 self.round_active = False
                 self.round_ended = True
                 self.edit_mode = True
-                self.current_branches = int(10 * (1 + (self.wave)/10) ** self.wave) + 1
                 self.wave += 1
                 # Optional: self.paths_remaining = MAX_TILES # Reset tiles for next round?
 
