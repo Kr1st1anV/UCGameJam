@@ -981,13 +981,8 @@ class Game:
                         if self.mobs_to_spawn > 0:
                             pts = self.get_path_waypoints()
                             new_mob = Mob(pts, self.spriteSize, DEFAULT_WIDTH/2, 50, self.selected_mob_type)
-<<<<<<< HEAD
                             self.mobs_to_spawn -= 1
                             self.mobs.append(new_mob)
-=======
-                            self.mobs.append(new_mob)
-                            self.mobs_to_spawn -= 1
->>>>>>> 6339d8b5d96f6b8c8464416ecf54cc9609f4d7f2
                         else:
                             pygame.time.set_timer(self.SPAWN_MOB_EVENT, 0)
                     elif event.type == pygame.KEYUP:
