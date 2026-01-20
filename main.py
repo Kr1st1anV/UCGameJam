@@ -188,6 +188,37 @@ class Game:
         path = os.path.join(TOWERS_DIR, name)
         return pygame.image.load(path).convert_alpha()
     
+    def initiate_cutscenes(self):
+        self.game_active = True
+        self.cutscene_frame = 0
+        self.cutscene_images = []
+        self.cutscene_timer = 0
+        self.animation_speed = 100 # Milliseconds per frame
+
+    def load_cutscene(self, folder_name):
+        self.game_active = False
+        self.cutscene_images = []
+        path = os.path.join(os.path.dirname(__file__), 'cutscenes', folder_name)
+        
+        # Load all images in the folder sorted by name
+        files = sorted([f for f in os.listdir(path) if f.endswith('.png')])
+        for f in files:
+            img = pygame.image.load(os.path.join(path, f)).convert_alpha()
+            # Scale to screen size
+            img = pygame.transform.scale(img, (self.width, self.height))
+            self.cutscene_images.append(img)
+        self.cutscene_frame = 0
+
+    def victory(self):
+        if self.game_active: # Prevent reloading every frame
+            print("Victory! Loading animation...")
+            self.load_cutscene('victory')
+
+    def defeat(self):
+        if self.game_active:
+            print("Defeat! Loading animation...")
+            self.load_cutscene('defeat')
+    
     def initiate_tree_health_bars(self):
         self.health_frames = []
         # The specific percentages you mentioned
@@ -291,6 +322,7 @@ class Game:
         self.showing_instructions_scene = False
         self.start_screen = StartScreen(self.surface)
         self.clock = pygame.time.Clock()
+        self.initiate_cutscenes()
         self.initiate_blocks()
         self.initiate_towers()
         self.initiate_clouds()
