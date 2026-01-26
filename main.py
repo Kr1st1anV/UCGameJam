@@ -169,7 +169,14 @@ class Game:
         self.branches = [10,10,10]
         self.current_branches = self.branches[self.wave-1]
 
-        pygame.font.init()        
+        pygame.font.init()
+        
+        # Cache for rendered text surfaces to avoid re-rendering every frame
+        self.cached_text_surfaces = {}
+        self.last_wave = 0
+        self.last_mobs_to_spawn = -1
+        self.last_branches = -1
+        self.last_paths_remaining = -1        
 
     def x_transform(self, x, w, h):
         return (x * w / 2, (x * h/2)/2)
@@ -195,30 +202,74 @@ class Game:
         self.cutscene_images = []
         self.cutscene_timer = 0
         self.animation_speed = 100 # Milliseconds per frame
+        self.showing_cutscene = False
+        self.cutscene_played_once = False  # For testing: track if win cutscene has been shown
+        self.cutscene_skip_delay = 0  # Prevent immediate skipping
+        self.cutscene_finished = False  # Track if cutscene has reached the last frame
 
-    def load_cutscene(self, folder_name):
-        self.game_active = False
+    def load_cutscene(self, folder_name, return_to_start=False):
+        # Prevent reloading if cutscene is already showing
+        if self.showing_cutscene and len(self.cutscene_images) > 0:
+            print("Cutscene already loaded, skipping reload")
+            return
+        
+        # Reset all cutscene state before loading
         self.cutscene_images = []
+        self.cutscene_frame = 1  # Start one frame ahead
+        self.cutscene_finished = False
+        
+        # Don't set showing_cutscene until images are loaded to prevent showing stale frames
+        self.game_active = False
+        self.cutscene_return_to_start = return_to_start  # Track if we should return to start screen after cutscene
         path = os.path.join(os.path.dirname(__file__), 'cutscenes', folder_name)
         
-        # Load all images in the folder sorted by name
-        files = sorted([f for f in os.listdir(path) if f.endswith('.png')])
-        for f in files:
-            img = pygame.image.load(os.path.join(path, f)).convert_alpha()
-            # Scale to screen size
-            img = pygame.transform.scale(img, (self.width, self.height))
-            self.cutscene_images.append(img)
-        self.cutscene_frame = 0
+        # Load all images in the folder sorted by name (natural sort for f1, f2, f10, etc.)
+        try:
+            import re
+            def natural_sort_key(text):
+                # Extract number from filename for proper sorting (f1, f2, f10 instead of f1, f10, f2)
+                match = re.search(r'(\d+)', text)
+                return int(match.group(1)) if match else 0
+            files = sorted([f for f in os.listdir(path) if f.endswith('.png')], key=natural_sort_key)
+            print(f"Loading cutscene from {folder_name}: found {len(files)} images")
+            if len(files) == 0:
+                print(f"ERROR: No PNG files found in {path}")
+                self.showing_cutscene = False
+                return
+            
+            for f in files:
+                img_path = os.path.join(path, f)
+                img = pygame.image.load(img_path).convert_alpha()
+                # Scale to screen size
+                img = pygame.transform.scale(img, (self.width, self.height))
+                self.cutscene_images.append(img)
+            
+            # Now that all images are loaded, set showing_cutscene and initialize frame
+            # Start from frame 1 (one frame ahead) if we have enough frames
+            if len(self.cutscene_images) > 1:
+                self.cutscene_frame = 1
+            else:
+                self.cutscene_frame = 0
+            self.cutscene_timer = pygame.time.get_ticks()
+            self.cutscene_skip_delay = pygame.time.get_ticks() + 500  # Prevent skipping for 500ms
+            self.cutscene_finished = False  # Reset finished flag when loading new cutscene
+            self.showing_cutscene = True  # Only set this after images are loaded
+            print(f"Cutscene loaded: {len(self.cutscene_images)} frames, showing_cutscene={self.showing_cutscene}, showing_start_screen={self.showing_start_screen}")
+        except Exception as e:
+            print(f"ERROR loading cutscene: {e}")
+            self.showing_cutscene = False
 
     def victory(self):
         if self.game_active: # Prevent reloading every frame
             print("Victory! Loading animation...")
-            self.load_cutscene('victory')
+            # Load victory cutscene and return to main menu when finished
+            self.load_cutscene('victory', return_to_start=True)
 
     def defeat(self):
         if self.game_active:
             print("Defeat! Loading animation...")
-            self.load_cutscene('defeat')
+            # Load defeat cutscene and return to main menu when finished
+            self.load_cutscene('defeat', return_to_start=True)
     
     def initiate_tree_health_bars(self):
         self.health_frames = []
@@ -235,6 +286,46 @@ class Game:
             
         # Initialize the tree health variable
         self.tree_health = 2500
+    
+    def initiate_cached_images(self):
+        """Pre-load and cache all background images to avoid loading every frame"""
+        try:
+            # Background images
+            background_raw = self.load_world("wbsky.png")
+            self.cached_bg_image = pygame.transform.scale(background_raw, (int(background_raw.get_width() * 0.7), int(background_raw.get_height() * 0.75)))
+            
+            island_raw = self.load_world("island.png")
+            self.cached_island_image = pygame.transform.scale(island_raw, (int(island_raw.get_width() * 1), int(island_raw.get_height() * 1.2)))
+            
+            ui_raw = self.load_world("UI_play.png")
+            self.cached_ui_image = pygame.transform.scale(ui_raw, (int(ui_raw.get_width() * 0.7), int(ui_raw.get_height() * 0.75)))
+            
+            tree_life_raw = self.load_world("tree_of_life.png")
+            self.cached_tree_life_image = pygame.transform.scale(tree_life_raw, (int(tree_life_raw.get_width() * 1.5), int(tree_life_raw.get_height() * 1.5)))
+            
+            # UI images
+            bookofevil_raw = self.load_world('scriptofevilbutton.png')
+            self.cached_bookofevil = pygame.transform.scale(bookofevil_raw, (int(bookofevil_raw.get_width() * 0.7), int(bookofevil_raw.get_height() * 0.7)))
+            
+            bookoflife_raw = self.load_world('bookoflifebutton.png')
+            self.cached_bookoflife = pygame.transform.scale(bookoflife_raw, (int(bookoflife_raw.get_width() * 0.7), int(bookoflife_raw.get_height() * 0.7)))
+            
+            scroll_raw = self.load_world('emptyscroll.png')
+            self.cached_scroll = pygame.transform.scale(scroll_raw, (int(scroll_raw.get_width() * 0.8), int(scroll_raw.get_height() * 0.8)))
+            
+            book_of_lifeopen_raw = self.load_world('book_life.png')
+            self.cached_book_of_lifeopen = pygame.transform.scale(book_of_lifeopen_raw, (int(book_of_lifeopen_raw.get_width() * 0.55), int(book_of_lifeopen_raw.get_height() * 0.55)))
+            print("Cached images initialized successfully")
+        except Exception as e:
+            print(f"Error initializing cached images: {e}")
+            import traceback
+            traceback.print_exc()
+    
+    def initiate_cached_fonts(self):
+        """Pre-load fonts to avoid creating them every frame"""
+        font_path = os.path.join(os.path.join(os.path.dirname(__file__), 'fonts'), "Dico.ttf")
+        self.cached_font_large = pygame.font.Font(font_path, 35)
+        self.cached_font_medium = pygame.font.Font(font_path, 25)
     
     def initiate_blocks(self):
         scale_factor = 1.5
@@ -328,6 +419,8 @@ class Game:
         self.initiate_towers()
         self.initiate_clouds()
         self.initiate_tree_health_bars()
+        self.initiate_cached_images()  # Pre-load and cache background images
+        self.initiate_cached_fonts()  # Pre-load fonts
         self.run_event_loop()
 
     def quit_app(self) -> None:
@@ -583,40 +676,49 @@ class Game:
                             # pygame.draw.line(self.surface, (255, 255, 0), tower_pos, target_mob.pos, 2)
     
     def draw_UI(self) -> None: 
-        #scale fix
-        bookofevil = self.load_world('scriptofevilbutton.png')
-        scale_fix_boe = pygame.transform.scale(bookofevil, (int(bookofevil.get_width() * 0.7), int(bookofevil.get_height() * 0.7)))
-        bookoflife = self.load_world('bookoflifebutton.png')
-        scale_fix_bol = pygame.transform.scale(bookoflife, (int(bookoflife.get_width() * 0.7), int(bookoflife.get_height() * 0.7)))
-        scroll = self.load_world('emptyscroll.png')
-        scale_fix_scroll = pygame.transform.scale(scroll, (int(scroll.get_width() * 0.8), int(scroll.get_height() * 0.8)))
-        book_of_lifeopen = self.load_world('book_life.png')
-        scale_fix_bolo = pygame.transform.scale(book_of_lifeopen, (int(book_of_lifeopen.get_width() * 0.55), int(book_of_lifeopen.get_height() * 0.55)))
-
+        # Use cached images instead of loading every frame
         if self.showing_scroll:
-            self.surface.blit(scale_fix_scroll, (20, 240))
+            self.surface.blit(self.cached_scroll, (20, 240))
 
         if self.showing_book:
-            self.surface.blit(scale_fix_bolo, (-40, 230))
+            self.surface.blit(self.cached_book_of_lifeopen, (-40, 230))
 
         ##### UI PRESS #####
-        boe_rect = scale_fix_boe.get_rect(topleft=(673, 525))
+        boe_rect = self.cached_bookofevil.get_rect(topleft=(673, 525))
         self.ui_hitboxes['book_of_evil'] = boe_rect.inflate(-40, -40)
 
-        bol_rect = scale_fix_bol.get_rect(topleft=(673, 350))
+        bol_rect = self.cached_bookoflife.get_rect(topleft=(673, 350))
         self.ui_hitboxes['book_of_life'] = bol_rect.inflate(-20, -200)
         #########################
 
-        self.font = pygame.font.Font(os.path.join(os.path.join(os.path.dirname(__file__), 'fonts'), "Dico.ttf"), 35)
-        romanNumeral = self.intToRoman(self.wave)
-        self.wave_text = self.font.render("Wave: " + romanNumeral, True, (0, 0, 0))
-        self.mobs_text = self.font.render(f'Mobs: {self.mobs_to_spawn}', True, (0, 0, 0))
-        #self.points_text = self.font.render(f'Points: {self.points}', True, (0, 0, 0))
-        self.branches_text = self.font.render(f':  {self.current_branches}', True, (0, 0, 0))
-        self.units_text = self.font.render(f'Units:', True, (0, 0, 0))
-        self.surface.blit(self.wave_text, (50, 70))
-        self.surface.blit(self.branches_text, (735, 45))
-        self.surface.blit(self.units_text, (1130, 550))
+        # Cache text rendering - only re-render if values changed
+        if self.last_wave != self.wave:
+            romanNumeral = self.intToRoman(self.wave)
+            self.cached_text_surfaces['wave'] = self.cached_font_large.render("Wave: " + romanNumeral, True, (0, 0, 0))
+            self.last_wave = self.wave
+        
+        if self.last_mobs_to_spawn != self.mobs_to_spawn:
+            self.cached_text_surfaces['mobs'] = self.cached_font_large.render(f'Mobs: {self.mobs_to_spawn}', True, (0, 0, 0))
+            self.last_mobs_to_spawn = self.mobs_to_spawn
+        
+        if self.last_branches != self.current_branches:
+            self.cached_text_surfaces['branches'] = self.cached_font_large.render(f':  {self.current_branches}', True, (0, 0, 0))
+            self.last_branches = self.current_branches
+        
+        # Initialize text surfaces if they don't exist
+        if 'wave' not in self.cached_text_surfaces:
+            romanNumeral = self.intToRoman(self.wave)
+            self.cached_text_surfaces['wave'] = self.cached_font_large.render("Wave: " + romanNumeral, True, (0, 0, 0))
+        if 'mobs' not in self.cached_text_surfaces:
+            self.cached_text_surfaces['mobs'] = self.cached_font_large.render(f'Mobs: {self.mobs_to_spawn}', True, (0, 0, 0))
+        if 'branches' not in self.cached_text_surfaces:
+            self.cached_text_surfaces['branches'] = self.cached_font_large.render(f':  {self.current_branches}', True, (0, 0, 0))
+        if 'units' not in self.cached_text_surfaces:
+            self.cached_text_surfaces['units'] = self.cached_font_large.render(f'Units:', True, (0, 0, 0))
+        
+        self.surface.blit(self.cached_text_surfaces['wave'], (50, 70))
+        self.surface.blit(self.cached_text_surfaces['branches'], (735, 45))
+        self.surface.blit(self.cached_text_surfaces['units'], (1130, 550))
 
         
         # self.settings = self.load_world('settings.png')
@@ -755,7 +857,36 @@ class Game:
 
 
     def draw_window(self) -> None:
-        if self.showing_start_screen:
+        if self.showing_cutscene:
+            # Draw cutscene (check this first so it takes priority)
+            if self.cutscene_images and len(self.cutscene_images) > 0:
+                # Clear screen first to prevent any flickering
+                self.surface.fill((0, 0, 0))
+                
+                # Only advance frames if cutscene hasn't finished
+                if not self.cutscene_finished:
+                    now = pygame.time.get_ticks()
+                    if now - self.cutscene_timer >= self.animation_speed:
+                        self.cutscene_timer = now
+                        self.cutscene_frame += 1
+                        # Check if we've reached the last frame
+                        if self.cutscene_frame >= len(self.cutscene_images):
+                            self.cutscene_frame = len(self.cutscene_images) - 1  # Stay on last frame
+                            self.cutscene_finished = True
+                
+                # Ensure frame index is valid and display the current frame
+                if 0 <= self.cutscene_frame < len(self.cutscene_images):
+                    self.surface.blit(self.cutscene_images[self.cutscene_frame], (0, 0))
+                else:
+                    # Fallback: show first frame if index is invalid
+                    self.cutscene_frame = 0
+                    self.surface.blit(self.cutscene_images[0], (0, 0))
+            else:
+                # If no images loaded, fill with black and show error
+                self.surface.fill((0, 0, 0))
+                print("WARNING: Cutscene is showing but no images loaded!")
+            pygame.display.update()
+        elif self.showing_start_screen:
             self.start_screen.draw()
             self.start_screen.draw_buttons()
             if self.showing_settings_screen:
@@ -765,20 +896,40 @@ class Game:
             pygame.display.update()
         else:
             self.surface.fill(self.bgcolor)
-            self.background = self.load_world("wbsky.png")
-            self.bg_image = pygame.transform.scale(self.background,(int(self.background.get_width() * 0.7), int(self.background.get_height() * 0.75)))
-            self.surface.blit(self.bg_image, (0, 0))
+            # Use cached images instead of loading every frame (with fallback if not initialized)
+            if hasattr(self, 'cached_bg_image'):
+                self.surface.blit(self.cached_bg_image, (0, 0))
+            else:
+                # Fallback: load and scale on the fly if cache not initialized
+                background_raw = self.load_world("wbsky.png")
+                bg_img = pygame.transform.scale(background_raw, (int(background_raw.get_width() * 0.7), int(background_raw.get_height() * 0.75)))
+                self.surface.blit(bg_img, (0, 0))
+            
             self.update_and_draw_clouds()
-            self.island = self.load_world("island.png")
-            self.island_image = pygame.transform.scale(self.island,(int(self.island.get_width() * 1), int(self.island.get_height() * 1.2)))
-            self.surface.blit(self.island_image, (-100, 0))
-            self.background = self.load_world("UI_play.png")
-            self.bg_image = pygame.transform.scale(self.background,(int(self.background.get_width() * 0.7), int(self.background.get_height() * 0.75)))
-            self.surface.blit(self.bg_image, (0, 0))
+            
+            if hasattr(self, 'cached_island_image'):
+                self.surface.blit(self.cached_island_image, (-100, 0))
+            else:
+                island_raw = self.load_world("island.png")
+                island_img = pygame.transform.scale(island_raw, (int(island_raw.get_width() * 1), int(island_raw.get_height() * 1.2)))
+                self.surface.blit(island_img, (-100, 0))
+            
+            if hasattr(self, 'cached_ui_image'):
+                self.surface.blit(self.cached_ui_image, (0, 0))
+            else:
+                ui_raw = self.load_world("UI_play.png")
+                ui_img = pygame.transform.scale(ui_raw, (int(ui_raw.get_width() * 0.7), int(ui_raw.get_height() * 0.75)))
+                self.surface.blit(ui_img, (0, 0))
+            
             self.map_grid()
-            self.tree_life = self.load_world("tree_of_life.png")
-            self.tree_life_img = pygame.transform.scale(self.tree_life,(int(self.tree_life.get_width() * 1.5), int(self.tree_life.get_height() * 1.5)))
-            self.surface.blit(self.tree_life_img, (210, 30))
+            
+            if hasattr(self, 'cached_tree_life_image'):
+                self.surface.blit(self.cached_tree_life_image, (210, 30))
+            else:
+                tree_life_raw = self.load_world("tree_of_life.png")
+                tree_img = pygame.transform.scale(tree_life_raw, (int(tree_life_raw.get_width() * 1.5), int(tree_life_raw.get_height() * 1.5)))
+                self.surface.blit(tree_img, (210, 30))
+            
             self.draw_tree_of_life()
             #self.surface.blit(self.load_image('red.png'), (800, 600))
             #self.surface.blit(self.load_image('purple.png'), (840, 600))
@@ -822,10 +973,15 @@ class Game:
                 elif item['type'] == 'mob':
                     item['obj'].draw(self.surface)
 
-            self.font = pygame.font.Font(os.path.join(os.path.join(os.path.dirname(__file__), 'fonts'), "Dico.ttf"), 25)
-            #self.surface.blit(self.path_icon, (50, 640))
-            self.text = self.font.render(f'Tiles Remaining: {self.paths_remaining}', True, (0, 0, 0))
-            self.surface.blit(self.text, (40, 120))
+            # Cache text rendering for tiles remaining - only re-render if value changed
+            if self.last_paths_remaining != self.paths_remaining:
+                self.cached_text_surfaces['tiles'] = self.cached_font_medium.render(f'Tiles Remaining: {self.paths_remaining}', True, (0, 0, 0))
+                self.last_paths_remaining = self.paths_remaining
+            
+            if 'tiles' not in self.cached_text_surfaces:
+                self.cached_text_surfaces['tiles'] = self.cached_font_medium.render(f'Tiles Remaining: {self.paths_remaining}', True, (0, 0, 0))
+            
+            self.surface.blit(self.cached_text_surfaces['tiles'], (40, 120))
             
             self.draw_UI()
             pygame.display.update()
@@ -898,12 +1054,39 @@ class Game:
             for event in events:
                 if event.type == pygame.QUIT:
                     self.quit_app()
-                if self.showing_start_screen:
+                if self.showing_cutscene:
+                    # Allow skipping cutscene with mouse click or any key (after delay)
+                    current_time = pygame.time.get_ticks()
+                    if (event.type == pygame.MOUSEBUTTONDOWN or event.type == pygame.KEYDOWN) and current_time > self.cutscene_skip_delay:
+                        print("Cutscene skipped by user")
+                        self.showing_cutscene = False
+                        self.game_active = True
+                        # If cutscene was victory/defeat, return to start screen
+                        if self.cutscene_return_to_start:
+                            self.showing_start_screen = True
+                            # Reset game state when returning to start
+                            self.reset_grid()
+                            self.wave = 1
+                            self.tree_health = 2500
+                            self.round_active = False
+                            self.round_ended = True
+                            self.edit_mode = True
+                            self.mobs = []
+                            self.mobs_to_spawn = 0
+                        # For test cutscene: continue to game
+                        elif not self.showing_start_screen:
+                            # Already in game, just continue
+                            pass
+                        else:
+                            # Test cutscene finished, now start the game
+                            self.showing_start_screen = False
+                elif self.showing_start_screen:
                     if event.type == pygame.MOUSEBUTTONDOWN:
                         action = None
                         if not self.showing_settings_screen and not self.showing_instructions_scene:
                             action = self.start_screen.check_click(event.pos)
                             if action == "START":
+                                # Start the game normally
                                 self.showing_start_screen = False
                             if action == "SETTINGS":
                                 self.showing_settings_screen = True
@@ -987,6 +1170,16 @@ class Game:
                             pygame.time.set_timer(self.SPAWN_MOB_EVENT, 0)
                     elif event.type == pygame.KEYUP:
                         pass
+            # Check win condition: completed all waves (wave > 20)
+            if self.wave > 20 and self.tree_health > 0:
+                if self.game_active:
+                    self.victory()
+            
+            # Check lose condition: tree health depleted
+            if self.tree_health <= 0:
+                if self.game_active:
+                    self.defeat()
+            
             if self.round_active and self.mobs_to_spawn == 0 and len(self.mobs) == 0:
                 self.round_active = False
                 self.round_ended = True
@@ -997,6 +1190,9 @@ class Game:
             self.draw_window()
             if self.showing_start_screen:
                 self.clock.tick(15)
+                continue
+            elif self.showing_cutscene:
+                self.clock.tick(30)  # Slower frame rate for cutscenes
                 continue
             self.clock.tick(60)
 
