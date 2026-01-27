@@ -234,7 +234,7 @@ class Game:
         self.cutscene_frame = 0
         self.cutscene_images = []
         self.cutscene_timer = 0
-        self.animation_speed = 100 # Milliseconds per frame
+        self.animation_speed = 50 # Milliseconds per frame (2x faster)
         self.showing_cutscene = False
         self.cutscene_played_once = False  # For testing: track if win cutscene has been shown
         self.cutscene_skip_delay = 0  # Prevent immediate skipping
@@ -1569,12 +1569,12 @@ class Game:
 
             self.draw_window()
             if self.showing_start_screen:
-                self.clock.tick(15)
+                self.clock.tick(120)
                 continue
             elif self.showing_cutscene:
-                self.clock.tick(30)  # Slower frame rate for cutscenes
+                self.clock.tick(480)  # Slower frame rate for cutscenes
                 continue
-            self.clock.tick(60)
+            self.clock.tick(120)
 
 
 # ========
