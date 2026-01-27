@@ -17,6 +17,8 @@ BGROUND_DIR = os.path.join(os.path.dirname(__file__), 'bground')
 TOWERS_DIR = os.path.join(os.path.dirname(__file__), 'towers')
 BUTTONS_DIR = os.path.join(os.path.dirname(__file__), 'buttons')
 MOBS_DIR = os.path.join(os.path.dirname(__file__), 'mobs')
+ASSETS_UI_DIR = os.path.join(os.path.dirname(__file__), 'assets', 'ui')
+ASSETS_MOBS_DIR = os.path.join(os.path.dirname(__file__), 'assets', 'mobs')
 
 rgb = tuple[int,int,int]
 num = random.randint(1,5)
@@ -45,13 +47,19 @@ class Mob:
         pivot_x = DEFAULT_WIDTH /3
         pivot_y = 125 * 2.6
         self.mobcolor = [(200, 50, 50),(93, 63, 211),(0, 255, 255)]
-        self.mobtype = [['dragonfly flying_0001.png', 'dragonfly flying_0002.png', 'dragonfly flying_0003.png', 'dragonfly flying_0004.png']
-                        , ['worm moving_0001.png', 'worm moving_0002.png', 'worm moving_0003.png', 'worm moving_0004.png'],
-                        ['butterfly_0001.png', 'butterfly_0002.png', 'butterfly_0003.png', 'butterfly_0004.png'],
-                        ['snail idle_0001.png', 'snail idle_0002.png', 'snail idle_0003.png', 'snail idle_0004.png'],
-                        ['beetle_0001.png', 'beetle_0002.png', 'beetle_0003.png', 'beetle_0004.png']]
-        self.mob_health_values = [20, 10, 50, 100, 120]
-        self.mob_dmg = [6, 2, 4, 3, 3]
+        # Mob order: worm, butterfly, dragonfly, snail, beetle (matches script of evil order)
+        # File names need to match what's in assets/mobs directories
+        self.mobtype = [
+            ['worm moving_0001.png', 'worm moving_0002.png', 'worm moving_0003.png', 'worm moving_0004.png'],  # 0: worm
+            ['butterfly_0001.png', 'butterfly_0002.png', 'butterfly_0003.png', 'butterfly_0004.png'],  # 1: butterfly
+            ['dragonfly flying_0001.png', 'dragonfly flying_0002.png', 'dragonfly flying_0003.png', 'dragonfly flying_0004.png'],  # 2: dragonfly
+            ['snail idle_0001.png', 'snail idle_0002.png', 'snail idle_0003.png', 'snail idle_0004.png'],  # 3: snail
+            ['beetle_0001.png', 'beetle_0002.png', 'beetle_0003.png', 'beetle_0004.png']  # 4: beetle
+        ]
+        # Health values in order: worm, butterfly, dragonfly, snail, beetle
+        self.mob_health_values = [10, 50, 20, 100, 120]
+        # Damage values in order: worm, butterfly, dragonfly, snail, beetle
+        self.mob_dmg = [2, 4, 6, 3, 3]
         if mob_type is not None:
             self.randmob = mob_type
         else:
@@ -82,8 +90,29 @@ class Mob:
         self.mobframes_left = [pygame.transform.flip(f, True, False) for f in self.mobframes_right]
     
     def load_mob(self, name):
+        # Try assets directory first, then fall back to old mobs directory
+        # Mob order: dragonfly, worm, butterfly, snail, beetle
+        mob_folders = ['dragonfly', 'worm', 'butterfly', 'snail', 'beetle']
+        mob_folder = None
+        for folder in mob_folders:
+            if folder in name.lower():
+                mob_folder = folder
+                break
+        
+        if mob_folder:
+            # Try assets/mobs directory first
+            assets_path = os.path.join(ASSETS_MOBS_DIR, mob_folder, name)
+            if os.path.exists(assets_path):
+                return pygame.image.load(assets_path).convert_alpha()
+        
+        # Fallback to old mobs directory
         path = os.path.join(MOBS_DIR, name)
-        return pygame.image.load(path).convert_alpha()
+        if os.path.exists(path):
+            return pygame.image.load(path).convert_alpha()
+        
+        # If still not found, try assets/mobs with just the filename
+        print(f"Warning: Could not find mob image {name}, trying direct path")
+        return pygame.image.load(os.path.join(MOBS_DIR, name)).convert_alpha()
 
     def update(self):
         if self.target_idx < len(self.waypoints):
@@ -144,6 +173,10 @@ class Game:
         #########
         self.showing_scroll = False
         self.showing_book = False
+        self.scroll_page = 0  # Current page in script of evil (0-4 for 5 mobs)
+        self.cached_mob_icons = {}  # Cache mob icons for spawn boxes
+        self.showing_surrender = False  # Surrender screen
+        self.debug_click_mode = True  # Print mouse positions on click for hitbox debugging
         ########
         self.set_path = False
         self.rm_path = False
@@ -303,18 +336,93 @@ class Game:
             tree_life_raw = self.load_world("tree_of_life.png")
             self.cached_tree_life_image = pygame.transform.scale(tree_life_raw, (int(tree_life_raw.get_width() * 1.5), int(tree_life_raw.get_height() * 1.5)))
             
-            # UI images
-            bookofevil_raw = self.load_world('scriptofevilbutton.png')
+            # UI images - load from assets/ui
+            bookofevil_raw = pygame.image.load(os.path.join(ASSETS_UI_DIR, 'buttons', 'scriptofevilbutton.png')).convert_alpha()
             self.cached_bookofevil = pygame.transform.scale(bookofevil_raw, (int(bookofevil_raw.get_width() * 0.7), int(bookofevil_raw.get_height() * 0.7)))
             
-            bookoflife_raw = self.load_world('bookoflifebutton.png')
+            bookoflife_raw = pygame.image.load(os.path.join(ASSETS_UI_DIR, 'buttons', 'bookoflifebutton.png')).convert_alpha()
             self.cached_bookoflife = pygame.transform.scale(bookoflife_raw, (int(bookoflife_raw.get_width() * 0.7), int(bookoflife_raw.get_height() * 0.7)))
             
-            scroll_raw = self.load_world('emptyscroll.png')
-            self.cached_scroll = pygame.transform.scale(scroll_raw, (int(scroll_raw.get_width() * 0.8), int(scroll_raw.get_height() * 0.8)))
+            # Load scroll images for each mob type (script of evil) - order: worm, butterfly, dragonfly, snail, beetle
+            self.cached_scrolls = {}
+            scroll_names = ['scrollworm.png', 'scrollbutterfly.png', 'scrolldragonfly.png', 'scrollsnail.png', 'scrollbeetle.png']
+            for i, scroll_name in enumerate(scroll_names):
+                scroll_raw = pygame.image.load(os.path.join(ASSETS_UI_DIR, 'scroll', scroll_name)).convert_alpha()
+                self.cached_scrolls[i] = pygame.transform.scale(scroll_raw, (int(scroll_raw.get_width() * 0.8), int(scroll_raw.get_height() * 0.8)))
             
-            book_of_lifeopen_raw = self.load_world('book_life.png')
+            # Book of life - use book1.png from assets
+            book_of_lifeopen_raw = pygame.image.load(os.path.join(ASSETS_UI_DIR, 'book', 'book1.png')).convert_alpha()
             self.cached_book_of_lifeopen = pygame.transform.scale(book_of_lifeopen_raw, (int(book_of_lifeopen_raw.get_width() * 0.55), int(book_of_lifeopen_raw.get_height() * 0.55)))
+            
+            # Surrender page
+            surrender_raw = pygame.image.load(os.path.join(ASSETS_UI_DIR, 'surrenderpage.png')).convert_alpha()
+            self.cached_surrender_page = pygame.transform.scale(surrender_raw, (int(surrender_raw.get_width() * 0.8), int(surrender_raw.get_height() * 0.8)))
+            
+            # Spawn box image
+            woodbox_raw = self.load_world('woodbox.png')
+            self.cached_woodbox = pygame.transform.scale(woodbox_raw, (int(woodbox_raw.get_width() * 0.8), int(woodbox_raw.get_height() * 0.8)))
+            
+            # Load hammer cursor images (for build mode)
+            self.hammer_images = []
+            hammer_dir = os.path.join(ASSETS_UI_DIR, 'hammer')
+            if os.path.exists(hammer_dir):
+                hammer_files = sorted([f for f in os.listdir(hammer_dir) if f.endswith('.png')])
+                for hammer_file in hammer_files:
+                    hammer_img = pygame.image.load(os.path.join(hammer_dir, hammer_file)).convert_alpha()
+                    # Scale hammer to reasonable cursor size
+                    self.hammer_images.append(pygame.transform.scale(hammer_img, (40, 40)))
+            
+            # Create pixel art style shovel cursor (for delete mode)
+            # Make it match the pixel art style of the game
+            shovel_surf = pygame.Surface((32, 32), pygame.SRCALPHA)
+            # Pixel art shovel - brown handle, gray metal head
+            # Handle (vertical brown rectangle)
+            for y in range(2, 18):
+                for x in range(14, 18):
+                    shovel_surf.set_at((x, y), (101, 67, 33))  # Brown handle
+            
+            # Shovel head (gray metal, angled)
+            # Top edge
+            for x in range(6, 22):
+                shovel_surf.set_at((x, 18), (128, 128, 128))
+            # Left edge
+            for y in range(18, 26):
+                shovel_surf.set_at((6, y), (128, 128, 128))
+            # Right edge (curved)
+            for y in range(18, 26):
+                shovel_surf.set_at((21, y), (128, 128, 128))
+            # Fill shovel head
+            for y in range(19, 25):
+                for x in range(7, 21):
+                    shovel_surf.set_at((x, y), (192, 192, 192))
+            # Shovel tip
+            for x in range(8, 20):
+                shovel_surf.set_at((x, 25), (160, 160, 160))
+            
+            # Scale up to match hammer size
+            self.shovel_image = pygame.transform.scale(shovel_surf, (40, 40))
+            
+            # Initialize cursor animation variables
+            self.cursor_animation_frame = 0
+            self.cursor_animation_counter = 0
+            self.hammer_animating = False
+            self.hammer_animation_duration = 0
+            self.tile_changed = False
+            
+            # Cache mob icons for spawn boxes - order: worm, butterfly, dragonfly, snail, beetle
+            mob_names = ['worm', 'butterfly', 'dragonfly', 'snail', 'beetle']
+            for i, mob_name in enumerate(mob_names):
+                try:
+                    mob_folder = os.path.join(ASSETS_MOBS_DIR, mob_name)
+                    if os.path.exists(mob_folder):
+                        mob_files = sorted([f for f in os.listdir(mob_folder) if f.endswith('.png') and 'flipped' not in f.lower()])
+                        if mob_files:
+                            mob_icon = pygame.image.load(os.path.join(mob_folder, mob_files[0])).convert_alpha()
+                            # Scale to fit in box (woodbox is typically around 30x30)
+                            self.cached_mob_icons[i] = pygame.transform.scale(mob_icon, (25, 25))
+                except Exception as e:
+                    print(f"Error caching mob icon for {mob_name}: {e}")
+            
             print("Cached images initialized successfully")
         except Exception as e:
             print(f"Error initializing cached images: {e}")
@@ -456,95 +564,173 @@ class Game:
 
                 # Hover effect
                 # For Towers
-                if i == grid_i and j == grid_j:
+                is_hovered = (i == grid_i and j == grid_j)
+                if is_hovered:
                     tile_value = self.world_grid[i][j]
                     if tile_value in [-9, -8, "b2", "l1"]:
                         self.hovered_tower_type = tile_value
-                if self.edit_mode and type(self.world_grid[i][j]) == int and self.world_grid[i][j] >= 0 and i == grid_i and j == grid_j:
-                    #draw_y -= 10
+                
+                # Handle path editing
+                if self.edit_mode and type(self.world_grid[i][j]) == int and self.world_grid[i][j] >= 0 and is_hovered:
                     self.highlight = True
                     if self.set_path and self.paths_remaining > 0:
                         if  self.world_grid[i][j] != 1:
                             self.world_grid[i][j] = 1
                             self.paths_remaining -= 1
+                            # Trigger hammer animation when tile changes
+                            self.tile_changed = True
+                            self.hammer_animating = True
+                            self.hammer_animation_duration = 0.5  # Animation duration in seconds
                     elif self.rm_path:
                         if  self.world_grid[i][j] != 0:
                             self.world_grid[i][j] = 0
                             self.paths_remaining += 1
+                            # Trigger hammer animation when tile changes
+                            self.tile_changed = True
+                            self.hammer_animating = True
+                            self.hammer_animation_duration = 0.5  # Animation duration in seconds
                 else:
                     self.highlight = False
-                if self.highlight:
-                    if self.world_grid[i][j] == 0:
-                        self.surface.blit(self.h_tiles["dark_grass"], (draw_x, draw_y)) # Grass
-                    elif self.world_grid[i][j] == 1:
-                        sprite = self.get_path_sprite(i, j)
+                
+                # Draw tiles with hover highlighting based on B key state
+                # When B is pressed (build = False, delete mode): highlight path tiles on hover
+                # When B is not pressed (build = True, build mode): highlight grass tiles on hover
+                if self.world_grid[i][j] == 0:
+                    # Grass tile - highlight on hover if in build mode (B not pressed)
+                    if is_hovered and self.build:
+                        self.surface.blit(self.h_tiles["dark_grass"], (draw_x, draw_y)) # Highlighted Grass
+                    else:
+                        self.surface.blit(self.tiles["dark_grass"], (draw_x, draw_y)) # Normal Grass
+                elif self.world_grid[i][j] == 1:
+                    # Path tile - highlight on hover if in delete mode (B pressed)
+                    sprite = self.get_path_sprite(i, j)
+                    if is_hovered and not self.build:
+                        # Highlight path tiles when hovered in delete mode
+                        highlighted_sprite = self.highlight_block(sprite)
+                        self.surface.blit(highlighted_sprite, (draw_x, draw_y))
+                    else:
                         self.surface.blit(sprite, (draw_x, draw_y))
-                    elif self.world_grid[i][j] == -1:
-                        sprite = self.get_spawn_sprite(i, j)
-                        self.surface.blit(sprite, (draw_x, draw_y))
-                        valid_path = self.is_grid_valid(self.world_grid, GRID_SIZE)
-                        if valid_path:
-                            #Show a Space bar - Start Round
-                            pass
-                        else:
-                            pass
-                            #Disable a Space bar - Start Round
-                else:
-                    if self.world_grid[i][j] == 0:
-                        self.surface.blit(self.tiles["dark_grass"], (draw_x, draw_y)) # Grass
-                    elif self.world_grid[i][j] == 1:
-                        sprite = self.get_path_sprite(i, j)
-                        self.surface.blit(sprite, (draw_x, draw_y))
-                    elif self.world_grid[i][j] == -1:
-                        sprite = self.get_spawn_sprite(i, j)
-                        self.surface.blit(sprite, (draw_x, draw_y))
-                        valid_path = self.is_grid_valid(self.world_grid, GRID_SIZE)
-                        if valid_path:
-                            #Show a Space bar - Start Round
-                            pass
-                        else:
-                            pass
-                            #Disable a Space bar - Start Round
-                    elif self.world_grid[i][j] == "l1" or self.world_grid[i][j] == "b2":
-                        self.surface.blit(self.tiles["red"], (draw_x, draw_y)) # Red
-                    elif self.world_grid[i][j] == -3:
-                        self.surface.blit(self.tiles["white"], (draw_x, draw_y)) # White
-                    elif self.world_grid[i][j] == -9:
-                        self.surface.blit(self.tiles["red"], (draw_x, draw_y)) # Tree
-                    elif self.world_grid[i][j] == -8:
-                        self.surface.blit(self.tiles["dark_grass"], (draw_x, draw_y)) # Tree
+                elif self.world_grid[i][j] == -1:
+                    sprite = self.get_spawn_sprite(i, j)
+                    self.surface.blit(sprite, (draw_x, draw_y))
+                    valid_path = self.is_grid_valid(self.world_grid, GRID_SIZE)
+                    if valid_path:
+                        #Show a Space bar - Start Round
+                        pass
+                    else:
+                        pass
+                        #Disable a Space bar - Start Round
+                elif self.world_grid[i][j] == "l1" or self.world_grid[i][j] == "b2":
+                    self.surface.blit(self.tiles["red"], (draw_x, draw_y)) # Red
+                elif self.world_grid[i][j] == -3:
+                    self.surface.blit(self.tiles["white"], (draw_x, draw_y)) # White
+                elif self.world_grid[i][j] == -9:
+                    self.surface.blit(self.tiles["red"], (draw_x, draw_y)) # Tree
+                elif self.world_grid[i][j] == -8:
+                    self.surface.blit(self.tiles["dark_grass"], (draw_x, draw_y)) # Tree
 
-    def get_path_waypoints(self):
-        start_pos = None
-        for i in range(GRID_SIZE - 1, -1, -1):
+    def find_all_ends(self):
+        """Find all -1 positions (start and end points)"""
+        ends = []
+        for i in range(GRID_SIZE):
             for j in range(GRID_SIZE):
                 if self.world_grid[i][j] == -1:
-                    start_pos = (i, j)
-                    break
-            if start_pos: break
-
-        if not start_pos: return []
-
+                    ends.append((i, j))
+        return ends
+    
+    def can_reach_end(self, pos, target_end, visited_path, world_grid):
+        """Check if a position can reach the target end without going through visited_path"""
+        if pos == target_end:
+            return True
+        
+        curr_i, curr_j = pos
+        temp_visited = visited_path.copy()
+        temp_visited.add(pos)
+        
+        # Try all neighbors
+        for di, dj in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
+            ni, nj = curr_i + di, curr_j + dj
+            if 0 <= ni < GRID_SIZE and 0 <= nj < GRID_SIZE:
+                val = world_grid[ni][nj]
+                if (ni, nj) not in temp_visited and val in [1, -1]:
+                    if self.can_reach_end((ni, nj), target_end, temp_visited, world_grid):
+                        return True
+        return False
+    
+    def get_path_waypoints(self):
+        """Find path from start to end with smart intersection handling"""
+        ends = self.find_all_ends()
+        if len(ends) < 2:
+            return []  # Need at least start and end
+        
+        # Sort ends by row (i coordinate) descending to get bottom-most first
+        # Use bottom -1 as start (highest row index)
+        ends_sorted = sorted(ends, key=lambda x: x[0], reverse=True)
+        start_pos = ends_sorted[0]  # Bottom-most -1
+        
+        # Use top -1 as end (lowest row index) or furthest from start
+        end_pos = ends_sorted[-1] if len(ends_sorted) > 1 else ends_sorted[0]
+        
+        # If multiple ends, find the one furthest from start as the target
+        if len(ends) > 2:
+            max_dist = 0
+            for end in ends:
+                if end != start_pos:
+                    dist = abs(end[0] - start_pos[0]) + abs(end[1] - start_pos[1])
+                    if dist > max_dist:
+                        max_dist = dist
+                        end_pos = end
+        
         path_coords = [start_pos]
         visited = {start_pos}
         current = start_pos
-
-        while True:
+        
+        while current != end_pos:
             curr_i, curr_j = current
-            found_next = False
+            
+            # Find all valid neighbors (not visited, and are path tiles)
+            valid_neighbors = []
             for di, dj in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
                 ni, nj = curr_i + di, curr_j + dj
                 if 0 <= ni < GRID_SIZE and 0 <= nj < GRID_SIZE:
                     val = self.world_grid[ni][nj]
-                    if (ni, nj) not in visited and (val == 1 or val == -1):
-                        path_coords.append((ni, nj))
-                        visited.add((ni, nj))
-                        current = (ni, nj)
-                        found_next = True
-                        if val == -1: # Reached the end
-                            return path_coords
-                        break
-            if not found_next: break
+                    if (ni, nj) not in visited and val in [1, -1]:
+                        # Check if this path can reach the end (not a dead end)
+                        if self.can_reach_end((ni, nj), end_pos, visited, self.world_grid):
+                            # Calculate distance to end (heuristic)
+                            dist_to_end = abs(ni - end_pos[0]) + abs(nj - end_pos[1])
+                            valid_neighbors.append(((ni, nj), dist_to_end))
+            
+            if not valid_neighbors:
+                # No valid path found, return what we have
+                break
+            
+            # Sort by distance to end (closer is better)
+            valid_neighbors.sort(key=lambda x: x[1])
+            
+            # Get all neighbors with the best (smallest) distance
+            best_dist = valid_neighbors[0][1]
+            best_neighbors = [n[0] for n in valid_neighbors if n[1] == best_dist]
+            
+            # If multiple best options, randomly choose one
+            # Otherwise, take the best one
+            if len(best_neighbors) > 1:
+                # Randomly choose from best options (those closest to end)
+                next_pos = random.choice(best_neighbors)
+            else:
+                next_pos = best_neighbors[0]
+            
+            path_coords.append(next_pos)
+            visited.add(next_pos)
+            current = next_pos
+            
+            # If we reached an end (-1), check if it's the target end
+            if self.world_grid[current[0]][current[1]] == -1:
+                if current == end_pos:
+                    return path_coords
+                # If it's a different end, we've reached a valid endpoint
+                # Continue to see if we can reach the target end
+        
         return path_coords
 
     def start_round(self):
@@ -661,7 +847,8 @@ class Game:
                         # --------------------------
 
                         if now - self.tower_states[tower_key]["last_atk"] > stats[tile][2]:
-                            target.health -= stats[tile][1]
+                            # Mobs are invincible for debugging - damage disabled
+                            # target.health -= stats[tile][1]
                             self.tower_states[tower_key]["last_atk"] = now
                             self.tower_states[tower_key]["status"] = "attack"
                             self.tower_states[tower_key]["frame"] = 0
@@ -676,19 +863,63 @@ class Game:
                             # pygame.draw.line(self.surface, (255, 255, 0), tower_pos, target_mob.pos, 2)
     
     def draw_UI(self) -> None: 
+        # Show surrender screen if active
+        if self.showing_surrender:
+            if hasattr(self, 'cached_surrender_page'):
+                # Center the surrender page on screen
+                surrender_x = (self.width - self.cached_surrender_page.get_width()) // 2
+                surrender_y = (self.height - self.cached_surrender_page.get_height()) // 2
+                self.surface.blit(self.cached_surrender_page, (surrender_x, surrender_y))
+                # Add close button hitbox (you may need to adjust this based on the surrender page design)
+                self.ui_hitboxes['surrender_close'] = pygame.Rect(surrender_x + 200, surrender_y + 300, 100, 50)
+                pygame.draw.rect(self.surface, (255, 0, 0), self.ui_hitboxes['surrender_close'], 2)  # Red outline
+        
         # Use cached images instead of loading every frame
         if self.showing_scroll:
-            self.surface.blit(self.cached_scroll, (20, 240))
+            # Show the scroll for the current page (script of evil navigation)
+            if self.scroll_page in self.cached_scrolls:
+                self.surface.blit(self.cached_scrolls[self.scroll_page], (20, 240))
+                # Add click areas for page navigation (left and right sides of scroll)
+                scroll_rect = self.cached_scrolls[self.scroll_page].get_rect(topleft=(20, 240))
+                # Left side for previous page
+                self.ui_hitboxes['scroll_left'] = pygame.Rect(20, 240, scroll_rect.width // 3, scroll_rect.height)
+                # Right side for next page
+                self.ui_hitboxes['scroll_right'] = pygame.Rect(20 + (scroll_rect.width * 2 // 3), 240, scroll_rect.width // 3, scroll_rect.height)
+                # Draw red outlines for scroll navigation
+                pygame.draw.rect(self.surface, (255, 0, 0), self.ui_hitboxes['scroll_left'], 2)
+                pygame.draw.rect(self.surface, (255, 0, 0), self.ui_hitboxes['scroll_right'], 2)
 
         if self.showing_book:
             self.surface.blit(self.cached_book_of_lifeopen, (-40, 230))
+        
+        # Draw spawn boxes with mobs in order (dragonfly, worm, butterfly, snail, beetle)
+        self.draw_spawn_boxes()
 
         ##### UI PRESS #####
-        boe_rect = self.cached_bookofevil.get_rect(topleft=(673, 525))
-        self.ui_hitboxes['book_of_evil'] = boe_rect.inflate(-40, -40)
-
-        bol_rect = self.cached_bookoflife.get_rect(topleft=(673, 350))
-        self.ui_hitboxes['book_of_life'] = bol_rect.inflate(-20, -200)
+        # Use hitboxes that match the buttons already in the background image (UI_play.png)
+        # Script of evil (scroll) button is on top, book of life button is on bottom
+        # Use the actual button image dimensions to create precise hitboxes
+        # Buttons are scaled by 0.7, so positions need to match where they appear in background
+        
+        # Script of Evil button (top) - coordinates from user clicks
+        # Top-left: (700, 475), Bottom-right: (922, 539)
+        # Calculated: x=700, y=475, width=222, height=64
+        self.ui_hitboxes['book_of_evil'] = pygame.Rect(700, 475, 222, 64)
+        
+        # Book of Life button (bottom) - coordinates from user clicks
+        # Top-left: (701, 554), Bottom-right: (925, 615)
+        # Calculated: x=701, y=554, width=224, height=61
+        self.ui_hitboxes['book_of_life'] = pygame.Rect(701, 554, 224, 61)
+        
+        # Settings button - coordinates from user clicks
+        # Top-left: (849, 692), Bottom-right: (945, 709)
+        # Calculated: x=849, y=692, width=96, height=17
+        self.ui_hitboxes['settings'] = pygame.Rect(849, 692, 96, 17)
+        
+        # Draw red outlines for debugging hitboxes - these should exactly match the buttons/text
+        pygame.draw.rect(self.surface, (255, 0, 0), self.ui_hitboxes['book_of_evil'], 2)  # Red outline, 2px thick
+        pygame.draw.rect(self.surface, (255, 0, 0), self.ui_hitboxes['book_of_life'], 2)  # Red outline, 2px thick
+        pygame.draw.rect(self.surface, (255, 0, 0), self.ui_hitboxes['settings'], 2)  # Red outline, 2px thick
         #########################
 
         # Cache text rendering - only re-render if values changed
@@ -728,7 +959,76 @@ class Game:
         #self.surface.blit(scale_fix_bol, (673, 350))
         #self.surface.blit(scale_fix_scroll, (670, 230)) THIS IS THE SCROLL
     
+    def draw_spawn_boxes(self):
+        """Draw spawn boxes showing mobs in the correct order - 2 rows of 3 boxes"""
+        # Spawn box positions - 2 rows, 3 columns
+        spawn_box_x_start = 1130  # X position for spawn boxes
+        spawn_box_y_start = 580  # Starting Y position
+        spawn_box_spacing_x = 35  # Horizontal spacing between boxes
+        spawn_box_spacing_y = 35  # Vertical spacing between boxes
+        
+        # Mob order: 0=worm, 1=butterfly, 2=dragonfly, 3=snail, 4=beetle (matches script of evil order)
+        mob_names = ['worm', 'butterfly', 'dragonfly', 'snail', 'beetle']
+        
+        for i, mob_name in enumerate(mob_names):
+            # Calculate position: 2 rows, 3 columns
+            row = i // 3
+            col = i % 3
+            x_pos = spawn_box_x_start + (col * spawn_box_spacing_x)
+            y_pos = spawn_box_y_start + (row * spawn_box_spacing_y)
+            
+            # Draw woodbox background
+            if hasattr(self, 'cached_woodbox'):
+                self.surface.blit(self.cached_woodbox, (x_pos, y_pos))
+            
+            # Draw mob icon in the box using cached icon
+            if i in self.cached_mob_icons:
+                mob_icon = self.cached_mob_icons[i]
+                # Center the icon in the box
+                box_center_x = x_pos + self.cached_woodbox.get_width() // 2
+                box_center_y = y_pos + self.cached_woodbox.get_height() // 2
+                icon_rect = mob_icon.get_rect(center=(box_center_x, box_center_y))
+                self.surface.blit(mob_icon, icon_rect)
+                
+                # Store hitbox for clicking - use exact woodbox dimensions
+                spawn_hitbox = pygame.Rect(x_pos, y_pos, self.cached_woodbox.get_width(), self.cached_woodbox.get_height())
+                self.ui_hitboxes[f'spawn_box_{i}'] = spawn_hitbox
+                
+                # Highlight selected mob
+                if i == self.selected_mob_type:
+                    # Draw highlight border
+                    highlight_rect = pygame.Rect(x_pos, y_pos, self.cached_woodbox.get_width(), self.cached_woodbox.get_height())
+                    pygame.draw.rect(self.surface, (255, 255, 0), highlight_rect, 3)
+                
+                # Draw red outline for spawn box hitbox (debug) - exactly matches the woodbox
+                pygame.draw.rect(self.surface, (255, 0, 0), spawn_hitbox, 2)
+                
+                # Draw red outline for spawn box hitbox (debug)
+                if f'spawn_box_{i}' in self.ui_hitboxes:
+                    pygame.draw.rect(self.surface, (255, 0, 0), self.ui_hitboxes[f'spawn_box_{i}'], 1)
+    
     def ui_check_click(self, mouse_pos):
+        # Check surrender close button
+        if self.showing_surrender and 'surrender_close' in self.ui_hitboxes and self.ui_hitboxes['surrender_close'].collidepoint(mouse_pos):
+            return "SURRENDER_CLOSE"
+        
+        # Check spawn box clicks
+        for i in range(5):  # 5 mob types
+            box_key = f'spawn_box_{i}'
+            if box_key in self.ui_hitboxes and self.ui_hitboxes[box_key].collidepoint(mouse_pos):
+                return f"SPAWN_BOX_{i}"
+        
+        # Check scroll page navigation
+        if 'scroll_left' in self.ui_hitboxes and self.ui_hitboxes['scroll_left'].collidepoint(mouse_pos):
+            return "SCROLL_LEFT"
+        if 'scroll_right' in self.ui_hitboxes and self.ui_hitboxes['scroll_right'].collidepoint(mouse_pos):
+            return "SCROLL_RIGHT"
+        
+        # Check settings button
+        if 'settings' in self.ui_hitboxes and self.ui_hitboxes['settings'].collidepoint(mouse_pos):
+            return "SETTINGS"
+        
+        # Check book buttons
         if 'book_of_evil' in self.ui_hitboxes and self.ui_hitboxes['book_of_evil'].collidepoint(mouse_pos):
             return "BOOK_OF_EVIL"
         if 'book_of_life' in self.ui_hitboxes and self.ui_hitboxes['book_of_life'].collidepoint(mouse_pos):
@@ -984,12 +1284,47 @@ class Game:
             self.surface.blit(self.cached_text_surfaces['tiles'], (40, 120))
             
             self.draw_UI()
+            
+            # Draw cursor icon (hammer for build mode, shovel for delete mode)
+            if self.edit_mode:
+                # Hide default cursor in edit mode
+                pygame.mouse.set_visible(False)
+                
+                # Update hammer animation timer
+                if self.hammer_animating:
+                    # Use delta time from clock (get_time returns milliseconds since last tick)
+                    delta_time = self.clock.get_time() / 1000.0  # Convert to seconds
+                    self.hammer_animation_duration -= delta_time
+                    if self.hammer_animation_duration <= 0:
+                        self.hammer_animating = False
+                        self.cursor_animation_counter = 0
+                        self.cursor_animation_frame = 0
+                
+                if self.build and self.hammer_images:
+                    # Animate hammer only when tile changes
+                    if self.hammer_animating:
+                        self.cursor_animation_counter += 0.3  # Faster animation when active
+                        self.cursor_animation_frame = int(self.cursor_animation_counter) % len(self.hammer_images)
+                    else:
+                        # Show first frame when not animating
+                        self.cursor_animation_frame = 0
+                    
+                    cursor_img = self.hammer_images[self.cursor_animation_frame]
+                    # Draw at mouse position with offset to center
+                    self.surface.blit(cursor_img, (self.x - cursor_img.get_width() // 2, self.y - cursor_img.get_height() // 2))
+                elif not self.build and self.shovel_image:
+                    # Show shovel when deleting paths
+                    self.surface.blit(self.shovel_image, (self.x - self.shovel_image.get_width() // 2, self.y - self.shovel_image.get_height() // 2))
+            else:
+                # Show default cursor when not in edit mode
+                pygame.mouse.set_visible(True)
+            
             pygame.display.update()
 
     #Optimize This
     def is_grid_valid(self, world_grid, grid_size):
         all_path_coords = []
-        start_node = None
+        end_nodes = []  # All -1 positions (start and end)
 
         for i in range(grid_size):
             for j in range(grid_size):
@@ -1000,36 +1335,30 @@ class Game:
                 
                 all_path_coords.append((i, j))
                 
-                if val == -1 and start_node is None:
-                    start_node = (i, j)
-
-                ones_around = 0
-                neg_ones_around = 0
-                
-                for di, dj in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
-                    ni, nj = i + di, j + dj
-                    if 0 <= ni < grid_size and 0 <= nj < grid_size:
-                        neighbor = world_grid[ni][nj]
-                        if neighbor == 1:
-                            ones_around += 1
-                        elif neighbor == -1:
-                            neg_ones_around += 1
-
                 if val == -1:
-                    if ones_around != 1:
-                        return False
-                
-                elif val == 1:
-                    if ones_around < 1 or ones_around > 2:
-                        return False
-                    if neg_ones_around > 0 and ones_around > 1:
-                        return False
+                    end_nodes.append((i, j))
+                    # Check that -1 has at least one edge touching a path (1 or -1)
+                    has_path_neighbor = False
+                    for di, dj in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
+                        ni, nj = i + di, j + dj
+                        if 0 <= ni < grid_size and 0 <= nj < grid_size:
+                            neighbor = world_grid[ni][nj]
+                            if neighbor in [1, -1]:
+                                has_path_neighbor = True
+                                break
+                    if not has_path_neighbor:
+                        return False  # -1 must have at least one path neighbor
 
-        if not start_node:
-            return len(all_path_coords) == 0
+        # Must have at least one start (-1) and one end (-1)
+        if len(end_nodes) < 2:
+            return len(all_path_coords) == 0  # Empty grid is valid
+        
+        # Check that all path tiles are connected
+        if not all_path_coords:
+            return True
         
         visited = set()
-        stack = [start_node]
+        stack = [end_nodes[0]]  # Start from first -1
         
         while stack:
             curr = stack.pop()
@@ -1107,11 +1436,16 @@ class Game:
                         self.x, self.y = event.pos
                     elif event.type == pygame.MOUSEBUTTONDOWN: # 1 is left, 3 is right
                         if event.button == 1:
+                            # Debug: Print mouse position for hitbox calibration
+                            print(f"DEBUG: Mouse click position: ({event.pos[0]}, {event.pos[1]})")
+                            
                             ui_action = self.ui_check_click(event.pos)
 ################################################################################################################
                             if ui_action == "BOOK_OF_EVIL":
                                 print("Book of evil was clicked")
                                 self.showing_scroll = not self.showing_scroll
+                                if self.showing_scroll:
+                                    self.scroll_page = self.selected_mob_type  # Start on current mob's page
                                 if self.showing_book is True:
                                     self.showing_book = not self.showing_book
                             elif ui_action == "BOOK_OF_LIFE":
@@ -1119,6 +1453,31 @@ class Game:
                                 self.showing_book = not self.showing_book
                                 if self.showing_scroll is True:
                                     self.showing_scroll = not self.showing_scroll
+                            elif ui_action and ui_action.startswith("SPAWN_BOX_"):
+                                # Clicked on a spawn box - select that mob type
+                                mob_index = int(ui_action.split("_")[2])
+                                self.selected_mob_type = mob_index
+                                print(f"Selected mob type: {mob_index}")
+                            elif ui_action == "SCROLL_LEFT":
+                                # Navigate to previous page
+                                self.scroll_page = (self.scroll_page - 1) % 5
+                                print(f"Scroll page: {self.scroll_page}")
+                            elif ui_action == "SCROLL_RIGHT":
+                                # Navigate to next page
+                                self.scroll_page = (self.scroll_page + 1) % 5
+                                print(f"Scroll page: {self.scroll_page}")
+                            elif ui_action == "SETTINGS":
+                                # Show surrender screen
+                                self.showing_surrender = not self.showing_surrender
+                                print("Settings/Surrender clicked")
+                            elif ui_action == "SURRENDER_CLOSE":
+                                # Close surrender screen
+                                self.showing_surrender = False
+                                print("Surrender screen closed")
+                            elif ui_action == "SURRENDER_CLOSE":
+                                # Close surrender screen
+                                self.showing_surrender = False
+                                print("Surrender screen closed")
 ################################################################################################################
                             else:
                                 if self.build:
@@ -1157,15 +1516,23 @@ class Game:
                                 self.round_active = True
                                 self.round_ended = False
                                 self.mobs_to_spawn = self.mob_spawn_number[self.wave-1]
+                                # Reset branches for the current wave
+                                if self.wave <= len(self.branches):
+                                    self.current_branches = self.branches[self.wave-1]
+                                    self.last_branches = -1  # Force update of cached text
                                 pygame.time.set_timer(self.SPAWN_MOB_EVENT, 1000)
 
                     elif event.type == self.SPAWN_MOB_EVENT:
                         self.round_ended = False
-                        if self.mobs_to_spawn > 0:
+                        if self.mobs_to_spawn > 0 and self.current_branches > 0:
                             pts = self.get_path_waypoints()
                             new_mob = Mob(pts, self.spriteSize, DEFAULT_WIDTH/2, 50, self.selected_mob_type)
                             self.mobs_to_spawn -= 1
                             self.mobs.append(new_mob)
+                            # Reduce branches cost (1 branch per mob spawn)
+                            self.current_branches = max(0, self.current_branches - 1)
+                            # Update cached text surface for branches
+                            self.last_branches = -1  # Force update
                         else:
                             pygame.time.set_timer(self.SPAWN_MOB_EVENT, 0)
                     elif event.type == pygame.KEYUP:
@@ -1185,6 +1552,10 @@ class Game:
                 self.round_ended = True
                 self.edit_mode = True
                 self.wave += 1
+                # Reset branches for new wave
+                if self.wave <= len(self.branches):
+                    self.current_branches = self.branches[self.wave-1]
+                    self.last_branches = -1  # Force update of cached text
                 # Optional: self.paths_remaining = MAX_TILES # Reset tiles for next round?
 
             self.draw_window()
