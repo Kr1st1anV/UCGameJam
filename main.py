@@ -66,8 +66,6 @@ class Mob:
             self.randmob = random.randint(0, len(self.mobtype) - 1)
         self.health = self.mob_health_values[self.randmob]
         self.dmg = self.mob_dmg[self.randmob]
-        print(f"Spawned mob type {self.randmob} with {self.health} health")
-        print(f"Spawned mob type {self.randmob} with {self.dmg} dmg")
 
         self.mobframes = [self.load_mob(frame) for frame in self.mobtype[self.randmob]]
 
@@ -111,7 +109,6 @@ class Mob:
             return pygame.image.load(path).convert_alpha()
         
         # If still not found, try assets/mobs with just the filename
-        print(f"Warning: Could not find mob image {name}, trying direct path")
         return pygame.image.load(os.path.join(MOBS_DIR, name)).convert_alpha()
 
     def update(self):
@@ -243,7 +240,6 @@ class Game:
     def load_cutscene(self, folder_name, return_to_start=False):
         # Prevent reloading if cutscene is already showing
         if self.showing_cutscene and len(self.cutscene_images) > 0:
-            print("Cutscene already loaded, skipping reload")
             return
         
         # Reset all cutscene state before loading
@@ -264,9 +260,7 @@ class Game:
                 match = re.search(r'(\d+)', text)
                 return int(match.group(1)) if match else 0
             files = sorted([f for f in os.listdir(path) if f.endswith('.png')], key=natural_sort_key)
-            print(f"Loading cutscene from {folder_name}: found {len(files)} images")
             if len(files) == 0:
-                print(f"ERROR: No PNG files found in {path}")
                 self.showing_cutscene = False
                 return
             
@@ -287,20 +281,16 @@ class Game:
             self.cutscene_skip_delay = pygame.time.get_ticks() + 500  # Prevent skipping for 500ms
             self.cutscene_finished = False  # Reset finished flag when loading new cutscene
             self.showing_cutscene = True  # Only set this after images are loaded
-            print(f"Cutscene loaded: {len(self.cutscene_images)} frames, showing_cutscene={self.showing_cutscene}, showing_start_screen={self.showing_start_screen}")
         except Exception as e:
-            print(f"ERROR loading cutscene: {e}")
             self.showing_cutscene = False
 
     def victory(self):
         if self.game_active: # Prevent reloading every frame
-            print("Victory! Loading animation...")
             # Load victory cutscene and return to main menu when finished
             self.load_cutscene('victory', return_to_start=True)
 
     def defeat(self):
         if self.game_active:
-            print("Defeat! Loading animation...")
             # Load defeat cutscene and return to main menu when finished
             self.load_cutscene('defeat', return_to_start=True)
     
@@ -421,11 +411,9 @@ class Game:
                             # Scale to fit in box (woodbox is typically around 30x30)
                             self.cached_mob_icons[i] = pygame.transform.scale(mob_icon, (25, 25))
                 except Exception as e:
-                    print(f"Error caching mob icon for {mob_name}: {e}")
+                    pass
             
-            print("Cached images initialized successfully")
         except Exception as e:
-            print(f"Error initializing cached images: {e}")
             import traceback
             traceback.print_exc()
     
@@ -871,7 +859,6 @@ class Game:
                 self.surface.blit(self.cached_surrender_page, (surrender_x, surrender_y))
                 # Add close button hitbox (you may need to adjust this based on the surrender page design)
                 self.ui_hitboxes['surrender_close'] = pygame.Rect(surrender_x + 200, surrender_y + 300, 100, 50)
-                pygame.draw.rect(self.surface, (255, 0, 0), self.ui_hitboxes['surrender_close'], 2)  # Red outline
         
         # Use cached images instead of loading every frame
         if self.showing_scroll:
@@ -884,9 +871,6 @@ class Game:
                 self.ui_hitboxes['scroll_left'] = pygame.Rect(20, 240, scroll_rect.width // 3, scroll_rect.height)
                 # Right side for next page
                 self.ui_hitboxes['scroll_right'] = pygame.Rect(20 + (scroll_rect.width * 2 // 3), 240, scroll_rect.width // 3, scroll_rect.height)
-                # Draw red outlines for scroll navigation
-                pygame.draw.rect(self.surface, (255, 0, 0), self.ui_hitboxes['scroll_left'], 2)
-                pygame.draw.rect(self.surface, (255, 0, 0), self.ui_hitboxes['scroll_right'], 2)
 
         if self.showing_book:
             self.surface.blit(self.cached_book_of_lifeopen, (-40, 230))
@@ -914,12 +898,6 @@ class Game:
         # Top-left: (849, 692), Bottom-right: (945, 709)
         # Calculated: x=849, y=692, width=96, height=17
         self.ui_hitboxes['settings'] = pygame.Rect(849, 692, 96, 17)
-        
-        # Draw red outlines for debugging hitboxes - these should exactly match the buttons/text
-        pygame.draw.rect(self.surface, (255, 0, 0), self.ui_hitboxes['book_of_evil'], 2)  # Red outline, 2px thick
-        pygame.draw.rect(self.surface, (255, 0, 0), self.ui_hitboxes['book_of_life'], 2)  # Red outline, 2px thick
-        pygame.draw.rect(self.surface, (255, 0, 0), self.ui_hitboxes['settings'], 2)  # Red outline, 2px thick
-        #########################
 
         # Cache text rendering - only re-render if values changed
         if self.last_wave != self.wave:
@@ -998,13 +976,6 @@ class Game:
                     # Draw highlight border
                     highlight_rect = pygame.Rect(x_pos, y_pos, self.cached_woodbox.get_width(), self.cached_woodbox.get_height())
                     pygame.draw.rect(self.surface, (255, 255, 0), highlight_rect, 3)
-                
-                # Draw red outline for spawn box hitbox (debug) - exactly matches the woodbox
-                pygame.draw.rect(self.surface, (255, 0, 0), spawn_hitbox, 2)
-                
-                # Draw red outline for spawn box hitbox (debug)
-                if f'spawn_box_{i}' in self.ui_hitboxes:
-                    pygame.draw.rect(self.surface, (255, 0, 0), self.ui_hitboxes[f'spawn_box_{i}'], 1)
     
     def ui_check_click(self, mouse_pos):
         # Check surrender close button
@@ -1048,8 +1019,26 @@ class Game:
             current_health_img = self.get_health_frame()
             self.surface.blit(current_health_img, (40, 630))
         else:
-            print("Game Over")
             pass
+
+    def is_mob_unlocked(self, mob_index):
+        """Check if a mob type is unlocked based on current wave"""
+        if mob_index == 0:  # worm - always unlocked
+            return True
+        elif mob_index == 1:  # butterfly - unlocked at wave 2
+            return self.wave >= 2
+        elif mob_index == 2:  # dragonfly - unlocked at wave 4
+            return self.wave >= 4
+        elif mob_index == 3:  # snail - unlocked at wave 8
+            return self.wave >= 8
+        elif mob_index == 4:  # beetle - unlocked at wave 12
+            return self.wave >= 12
+        return False
+    
+    def get_unlock_wave(self, mob_index):
+        """Get the wave number required to unlock a mob type"""
+        unlock_waves = {0: 1, 1: 2, 2: 4, 3: 8, 4: 12}
+        return unlock_waves.get(mob_index, 999)
 
     def intToRoman(self, num):
         Roman = ""
@@ -1183,7 +1172,6 @@ class Game:
             else:
                 # If no images loaded, fill with black and show error
                 self.surface.fill((0, 0, 0))
-                print("WARNING: Cutscene is showing but no images loaded!")
             pygame.display.update()
         elif self.showing_start_screen:
             self.start_screen.draw()
@@ -1386,7 +1374,6 @@ class Game:
                     # Allow skipping cutscene with mouse click or any key (after delay)
                     current_time = pygame.time.get_ticks()
                     if (event.type == pygame.MOUSEBUTTONDOWN or event.type == pygame.KEYDOWN) and current_time > self.cutscene_skip_delay:
-                        print("Cutscene skipped by user")
                         self.showing_cutscene = False
                         self.game_active = True
                         # If cutscene was victory/defeat, return to start screen
@@ -1435,48 +1422,36 @@ class Game:
                         self.x, self.y = event.pos
                     elif event.type == pygame.MOUSEBUTTONDOWN: # 1 is left, 3 is right
                         if event.button == 1:
-                            # Debug: Print mouse position for hitbox calibration
-                            print(f"DEBUG: Mouse click position: ({event.pos[0]}, {event.pos[1]})")
-                            
                             ui_action = self.ui_check_click(event.pos)
 ################################################################################################################
                             if ui_action == "BOOK_OF_EVIL":
-                                print("Book of evil was clicked")
                                 self.showing_scroll = not self.showing_scroll
                                 if self.showing_scroll:
                                     self.scroll_page = self.selected_mob_type  # Start on current mob's page
                                 if self.showing_book is True:
                                     self.showing_book = not self.showing_book
                             elif ui_action == "BOOK_OF_LIFE":
-                                print("Book of life was clicked")
                                 self.showing_book = not self.showing_book
                                 if self.showing_scroll is True:
                                     self.showing_scroll = not self.showing_scroll
                             elif ui_action and ui_action.startswith("SPAWN_BOX_"):
                                 # Clicked on a spawn box - select that mob type
                                 mob_index = int(ui_action.split("_")[2])
-                                self.selected_mob_type = mob_index
-                                print(f"Selected mob type: {mob_index}")
+                                # Only select if mob is unlocked
+                                if self.is_mob_unlocked(mob_index):
+                                    self.selected_mob_type = mob_index
                             elif ui_action == "SCROLL_LEFT":
                                 # Navigate to previous page
                                 self.scroll_page = (self.scroll_page - 1) % 5
-                                print(f"Scroll page: {self.scroll_page}")
                             elif ui_action == "SCROLL_RIGHT":
                                 # Navigate to next page
                                 self.scroll_page = (self.scroll_page + 1) % 5
-                                print(f"Scroll page: {self.scroll_page}")
                             elif ui_action == "SETTINGS":
                                 # Show surrender screen
                                 self.showing_surrender = not self.showing_surrender
-                                print("Settings/Surrender clicked")
                             elif ui_action == "SURRENDER_CLOSE":
                                 # Close surrender screen
                                 self.showing_surrender = False
-                                print("Surrender screen closed")
-                            elif ui_action == "SURRENDER_CLOSE":
-                                # Close surrender screen
-                                self.showing_surrender = False
-                                print("Surrender screen closed")
 ################################################################################################################
                             else:
                                 if self.build:
@@ -1514,26 +1489,19 @@ class Game:
                                 self.edit_mode = False
                                 self.round_active = True
                                 self.round_ended = False
-                                self.mobs_to_spawn = self.mob_spawn_number[self.wave-1]
-                                # Reset branches for the current wave
-                                if self.wave <= len(self.branches):
-                                    self.current_branches = self.branches[self.wave-1]
-                                    self.last_branches = -1  # Force update of cached text
+                                # Always spawn 10 mobs per round, regardless of branches
+                                self.mobs_to_spawn = 10
                                 pygame.time.set_timer(self.SPAWN_MOB_EVENT, 1000)
 
                     elif event.type == self.SPAWN_MOB_EVENT:
                         self.round_ended = False
-                        if self.mobs_to_spawn > 0 and self.current_branches > 0:
+                        if self.mobs_to_spawn > 0:
                             pts = self.get_path_waypoints()
                             new_mob = Mob(pts, self.spriteSize, DEFAULT_WIDTH/2, 50, self.selected_mob_type)
                             self.mobs_to_spawn -= 1
                             self.mobs.append(new_mob)
-                            # Reduce branches cost (1 branch per mob spawn)
-                            self.current_branches = max(0, self.current_branches - 1)
-                            # Update cached text surface for branches
-                            self.last_branches = -1  # Force update
-                        # Stop spawning if no more mobs to spawn OR no more branches
-                        if self.mobs_to_spawn <= 0 or self.current_branches <= 0:
+                        # Stop spawning if no more mobs to spawn
+                        if self.mobs_to_spawn <= 0:
                             pygame.time.set_timer(self.SPAWN_MOB_EVENT, 0)
                     elif event.type == pygame.KEYUP:
                         pass
@@ -1548,33 +1516,29 @@ class Game:
                     self.defeat()
             
             # Wave advances when round is active AND:
-            # - All mobs have spawned (mobs_to_spawn == 0) OR branches ran out (current_branches == 0)
+            # - All mobs have spawned (mobs_to_spawn == 0)
             # - AND all mobs are defeated (len(self.mobs) == 0)
             if self.round_active and len(self.mobs) == 0:
-                # Check if spawning is complete (either all mobs spawned or branches ran out)
-                spawning_complete = (self.mobs_to_spawn == 0) or (self.current_branches == 0)
+                # Check if spawning is complete (all mobs spawned)
+                spawning_complete = (self.mobs_to_spawn == 0)
                 
                 if spawning_complete:
                     self.round_active = False
                     self.round_ended = True
                     self.edit_mode = True
                     self.wave += 1
-                    # Reset branches for new wave
-                    if self.wave <= len(self.branches):
-                        self.current_branches = self.branches[self.wave-1]
-                        self.last_branches = -1  # Force update of cached text
                     # Stop spawn timer if it's still running
                     pygame.time.set_timer(self.SPAWN_MOB_EVENT, 0)
                     # Optional: self.paths_remaining = MAX_TILES # Reset tiles for next round?
 
             self.draw_window()
             if self.showing_start_screen:
-                self.clock.tick(120)
+                self.clock.tick(15)
                 continue
             elif self.showing_cutscene:
-                self.clock.tick(480)  # Slower frame rate for cutscenes
+                self.clock.tick(30)  # Slower frame rate for cutscenes
                 continue
-            self.clock.tick(120)
+            self.clock.tick(60)
 
 
 # ========
