@@ -847,8 +847,7 @@ class Game:
                         # --------------------------
 
                         if now - self.tower_states[tower_key]["last_atk"] > stats[tile][2]:
-                            # Mobs are invincible for debugging - damage disabled
-                            # target.health -= stats[tile][1]
+                            target.health -= stats[tile][1]
                             self.tower_states[tower_key]["last_atk"] = now
                             self.tower_states[tower_key]["status"] = "attack"
                             self.tower_states[tower_key]["frame"] = 0
@@ -1533,7 +1532,8 @@ class Game:
                             self.current_branches = max(0, self.current_branches - 1)
                             # Update cached text surface for branches
                             self.last_branches = -1  # Force update
-                        else:
+                        # Stop spawning if no more mobs to spawn OR no more branches
+                        if self.mobs_to_spawn <= 0 or self.current_branches <= 0:
                             pygame.time.set_timer(self.SPAWN_MOB_EVENT, 0)
                     elif event.type == pygame.KEYUP:
                         pass
@@ -1547,16 +1547,25 @@ class Game:
                 if self.game_active:
                     self.defeat()
             
-            if self.round_active and self.mobs_to_spawn == 0 and len(self.mobs) == 0:
-                self.round_active = False
-                self.round_ended = True
-                self.edit_mode = True
-                self.wave += 1
-                # Reset branches for new wave
-                if self.wave <= len(self.branches):
-                    self.current_branches = self.branches[self.wave-1]
-                    self.last_branches = -1  # Force update of cached text
-                # Optional: self.paths_remaining = MAX_TILES # Reset tiles for next round?
+            # Wave advances when round is active AND:
+            # - All mobs have spawned (mobs_to_spawn == 0) OR branches ran out (current_branches == 0)
+            # - AND all mobs are defeated (len(self.mobs) == 0)
+            if self.round_active and len(self.mobs) == 0:
+                # Check if spawning is complete (either all mobs spawned or branches ran out)
+                spawning_complete = (self.mobs_to_spawn == 0) or (self.current_branches == 0)
+                
+                if spawning_complete:
+                    self.round_active = False
+                    self.round_ended = True
+                    self.edit_mode = True
+                    self.wave += 1
+                    # Reset branches for new wave
+                    if self.wave <= len(self.branches):
+                        self.current_branches = self.branches[self.wave-1]
+                        self.last_branches = -1  # Force update of cached text
+                    # Stop spawn timer if it's still running
+                    pygame.time.set_timer(self.SPAWN_MOB_EVENT, 0)
+                    # Optional: self.paths_remaining = MAX_TILES # Reset tiles for next round?
 
             self.draw_window()
             if self.showing_start_screen:
