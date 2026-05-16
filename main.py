@@ -24,6 +24,46 @@ MAX_WAVES = 20
 WAVE_COMBAT_SECONDS = 30
 TILE_DRAW_SCALE = 1.75  # larger isometric tiles (reference layout was 1.5)
 
+
+worm = {
+    "health": 10,
+    "damage": 3,
+    "speed": 2,
+    "cost": 1
+}
+
+dragonfly = {
+    "health": 6,
+    "damage": 2,
+    "speed": 4,
+    "cost": 2
+}
+
+snail = {
+    "health": 45,
+    "damage": 10,
+    "speed": 1,
+    "cost": 6
+}
+
+butterfly = {
+    "health": 20,
+    "damage": 6,
+    "speed": 3,
+    "cost": 5
+}
+
+beetle = {
+    "health": 90,
+    "damage": 8,
+    "speed": 2,
+    "cost": 8,
+}
+# Maximum Branchs and Maximum Tiles per level
+tiles  = [20, 20, 21, 21, 21, 21, ]
+branches = [6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34, 36, 38, 40, 42, 45]
+treehealth = [18, 21, 25, 30, 36, 42, 48, 55, 63, 72, 82, 93, 105, 118, 132, 147, 163, 180, 198, 220]
+
 # Mob index: 0 spider (worm art), 1 butterfly, 2 dragonfly, 3 snail, 4 beetle
 MOB_HEALTH = [20, 50, 20, 100, 50]
 MOB_DAMAGE = [3, 7, 3, 40, 9]
