@@ -1,4 +1,8 @@
 class Maps:
+    """Level grids may differ in size (e.g. 10x10 vs 11x11). Use grid_dimensions()."""
+
+    REFERENCE_GRID_SIZE = 10
+
     def __init__(self):
         self.levels = {
             1:          [[-1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 
@@ -71,4 +75,47 @@ class Maps:
                         [0, 0, 0, 0, 0, 0, 0, 0, 0, 0], 
                         [0, 0, 0, -9, 0, 0, 0, 0, -8, 0], 
                         [0, 0, 0, 0, 0, 0, 0, 0, 0, -1]],
-        } #different levels and how they are organized
+        }  # different levels and how they are organized
+
+    @staticmethod
+    def grid_dimensions(grid) -> tuple[int, int]:
+        """Return (rows, cols) for a level grid."""
+        if not grid:
+            return Maps.REFERENCE_GRID_SIZE, Maps.REFERENCE_GRID_SIZE
+        rows = len(grid)
+        cols = max((len(row) for row in grid), default=rows)
+        return rows, cols
+
+    def level_grid_size(self, level_id: int) -> int:
+        """Largest side length for a level (used for uniform scaling)."""
+        rows, cols = self.grid_dimensions(self.levels[level_id])
+        return max(rows, cols)
+
+    def validate_level(self, level_id: int) -> bool:
+        """Every row must have the same width."""
+        grid = self.levels.get(level_id)
+        if not grid:
+            return False
+        width = len(grid[0])
+        return all(len(row) == width for row in grid)
+
+    @staticmethod
+    def level_for_wave(wave: int) -> int:
+        """Cycle playable maps as waves advance."""
+        levels = sorted(Maps().levels.keys())
+        return levels[(max(1, wave) - 1) % len(levels)]
+
+    @staticmethod
+    def branches_for_wave(wave: int) -> int:
+        """Branch budget to buy mobs during combat."""
+        return 6 + max(0, wave - 1) * 2
+
+    @staticmethod
+    def mob_quota_for_wave(wave: int) -> int:
+        """Max bugs the player may spawn this wave."""
+        return min(14, 3 + wave // 2)
+
+    @staticmethod
+    def tree_health_for_wave(wave: int) -> int:
+        """Tree starts each wave at this HP (grows each wave)."""
+        return 180 + wave * 125

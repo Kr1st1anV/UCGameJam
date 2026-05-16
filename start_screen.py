@@ -19,7 +19,7 @@ class StartScreen:
         for file in file_list:
             if file.endswith('.png'):
                 img = pygame.image.load(os.path.join(self.folder_path, file)).convert_alpha()
-                img = pygame.transform.scale(img, (DEFAULT_WIDTH, DEFAULT_HEIGHT))
+                img = pygame.transform.scale(img, self.surface.get_size())
                 self.frames.append(img)
 
         self.current_frame = 0

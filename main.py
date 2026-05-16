@@ -10,8 +10,8 @@ from start_screen import StartScreen
 DEFAULT_BGCOLOR = (137, 207, 240)
 DEFAULT_WIDTH   = 978
 DEFAULT_HEIGHT  = 750
-GRID_SIZE = 10
-MAX_TILES = 25
+REFERENCE_GRID_SIZE = Maps.REFERENCE_GRID_SIZE
+BASE_MAX_TILES = 25
 ASSETS_DIR = os.path.join(os.path.dirname(__file__), 'tiles')
 BGROUND_DIR = os.path.join(os.path.dirname(__file__), 'bground')
 TOWERS_DIR = os.path.join(os.path.dirname(__file__), 'towers')
@@ -20,7 +20,8 @@ MOBS_DIR = os.path.join(os.path.dirname(__file__), 'mobs')
 ASSETS_UI_DIR = os.path.join(os.path.dirname(__file__), 'assets', 'ui')
 ASSETS_MOBS_DIR = os.path.join(os.path.dirname(__file__), 'assets', 'mobs')
 
-TREE_HEALTH_MAX = 2500
+MAX_WAVES = 20
+TILE_DRAW_SCALE = 1.62  # slightly larger than original 1.5
 
 TREE_TAUNTS = [
     "The oak laughs in mulch.",
@@ -32,8 +33,7 @@ TREE_TAUNTS = [
 ]
 
 rgb = tuple[int,int,int]
-num = random.randint(1,5)
-PRESET_WORLD = Maps().levels[1]
+num = random.randint(1, 5)
 
 
 #SPRITES_DIR = os.path.join(ASSETS_DIR, 'sprites')
@@ -56,8 +56,6 @@ class Mob:
         self.waypoints = []
         w, h = sprite_size
         half_w, half_h = w / 2, h / 4
-        pivot_x = DEFAULT_WIDTH /3
-        pivot_y = 125 * 2.6
         self.mobcolor = [(200, 50, 50),(93, 63, 211),(0, 255, 255)]
         # Mob order: worm, butterfly, dragonfly, snail, beetle (matches script of evil order)
         # File names need to match what's in assets/mobs directories
@@ -192,6 +190,7 @@ class Game:
         self.ui_hitboxes = {}
         self.x = 0
         self.y = 0
+        self.SPAWN_MOB_EVENT = pygame.USEREVENT + 1
         #########
         self.showing_scroll = False
         self.showing_book = False
@@ -211,44 +210,40 @@ class Game:
         ########
         self.set_path = False
         self.rm_path = False
-        self.paths_remaining = MAX_TILES
-        self.reset_grid()
+        self.current_level_id = 1
+        self.grid_rows = REFERENCE_GRID_SIZE
+        self.grid_cols = REFERENCE_GRID_SIZE
+        self.grid_size = REFERENCE_GRID_SIZE
+        self.map_scale = 1.0
+        self.paths_remaining = BASE_MAX_TILES
         self.edit_mode = True
         self.build = True
-        self.mob_spawn_number = [10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10,10]
-        self.wave = 1
-
         self.highlight = True
 
         self.round_active = False
         self.round_ended = True
         
-        self.SPAWN_MOB_EVENT = pygame.USEREVENT + 1
-        self.mobs = [] # List to track all active mobs
+        self.mobs = []
         self.selected_mob_type = 0
-        self.mobs_to_spawn = 0
-        # Manual spawn keeps mobs_to_spawn at 0; wave logic must not treat that as "wave finished"
-        # on the first empty frame (see run_event_loop wave advance).
-        self.manual_mob_round = True
-        self.mob_spawn_number = [10,12,12,15,15,20,20,20,20]
         self.points = 0
 
-        # Branch system
-        self.base_branches = [5, 8, 10, 12, 15]  # Base branches per wave
-        self.branches_per_mob_killed = 2  # Branches earned for each mob killed
+        # Branches buy mobs during the wave; quota caps how many can be deployed
         self.current_branches = 0
-        self.earned_branches_this_round = 0  # Branches earned by killing mobs
-        self.mobs_killed_this_round = 0  # Counter for mobs killed this round
-        self.mob_costs = [1, 2, 3, 4, 5]  # Costs for worm, butterfly, dragonfly, snail, beetle
+        self.mob_costs = [1, 2, 3, 4, 5]  # worm, butterfly, dragonfly, snail, beetle
         
-        # Wave configuration - defines which mobs are available each wave
+        # Which bug types appear each wave (unlocks over time)
         self.wave_mobs = {
-            1: [0],  # Wave 1: Only worm
-            2: [0, 1],  # Wave 2: Worm and butterfly
-            3: [0, 1, 2],  # Wave 3: Worm, butterfly, dragonfly
-            4: [0, 1, 2, 3],  # Wave 4: Add snail
-            5: [0, 1, 2, 3, 4]  # Wave 5+: All mobs
+            1: [0],
+            2: [0, 1],
+            3: [0, 1, 2],
+            4: [0, 1, 2, 3],
+            5: [0, 1, 2, 3, 4],
         }
+
+        self.wave = 1
+        self.mob_quota_this_wave = 0
+        self.mobs_spawned_this_round = 0
+        self.begin_wave_setup()
         
         # Mob UI positioning for purchase squares on the right
         self.mob_ui_rect_size = 60
@@ -261,7 +256,7 @@ class Game:
         # Cache for rendered text surfaces to avoid re-rendering every frame
         self.cached_text_surfaces = {}
         self.last_wave = 0
-        self.last_mobs_to_spawn = -1
+        self.last_mobs_remaining = -1
         self.last_branches = 0
         self.last_paths_remaining = -1        
 
@@ -366,8 +361,7 @@ class Game:
             img = pygame.transform.scale(img, (int(img.get_width() * 0.7), int(img.get_height() * 0.7)))
             self.health_frames.append(img)
             
-        # Initialize the tree health variable (max must match art steps)
-        self.tree_health_max = TREE_HEALTH_MAX
+        self.tree_health_max = Maps.tree_health_for_wave(1)
         self.tree_health = self.tree_health_max
 
     def _init_feel_audio(self) -> None:
@@ -454,9 +448,9 @@ class Game:
         self.surface.blit(veil, (0, 0))
         title = self.cached_font_large.render("You are the infestation.", True, (255, 245, 200))
         sub = self.cached_font_medium.render("Drain the Tree of Life. Towers are not on your side.", True, (230, 230, 240))
-        c1 = self.cached_font_small.render("Connect BOTH path ends with tiles (hammer), then SPACE to start the wave.", True, (200, 210, 255))
-        c2 = self.cached_font_small.render("Spend branches on the right to spawn. N = next wave when no bugs are on the map.", True, (200, 210, 255))
-        c3 = self.cached_font_small.render("SPACE / ENTER / ESC or click to march.", True, (255, 220, 120))
+        c1 = self.cached_font_small.render("Route tiles from spawn to the tree. SPACE starts the assault.", True, (200, 210, 255))
+        c2 = self.cached_font_small.render("Spend branches to spawn bugs during the wave. Drain the tree's HP.", True, (200, 210, 255))
+        c3 = self.cached_font_small.render("N = skip to next wave when no bugs are out. Click to continue.", True, (255, 220, 120))
         block_w = max(title.get_width(), sub.get_width(), c1.get_width(), c2.get_width(), c3.get_width()) + 48
         block_h = title.get_height() + sub.get_height() + c1.get_height() + c2.get_height() + c3.get_height() + 50
         bx = (self.width - block_w) // 2
@@ -476,37 +470,64 @@ class Game:
         y += c2.get_height() + 18
         self.surface.blit(c3, (bx + 24, y))
 
+    def mobs_remaining_this_wave(self) -> int:
+        return max(0, self.mob_quota_this_wave - self.mobs_spawned_this_round)
+
+    def get_available_mobs_for_wave(self) -> list[int]:
+        return self.wave_mobs.get(min(self.wave, 5), [0, 1, 2, 3, 4])
+
+    def begin_wave_setup(self) -> None:
+        """New wave: map, branch budget, mob quota, and fresh tree HP (higher each wave)."""
+        self.current_level_id = Maps.level_for_wave(self.wave)
+        self.reset_grid(self.current_level_id)
+        self.mob_quota_this_wave = Maps.mob_quota_for_wave(self.wave)
+        self.mobs_spawned_this_round = 0
+        self.current_branches = Maps.branches_for_wave(self.wave)
+        self.tree_health_max = Maps.tree_health_for_wave(self.wave)
+        self.tree_health = self.tree_health_max
+        self.mobs = []
+        self.round_active = False
+        self.round_ended = True
+        self.edit_mode = True
+        self.last_mobs_remaining = -1
+        self.last_branches = -1
+
     def _spawn_mob_on_path(self, mob_index: int) -> bool:
-        """Spawn one mob if start/end are connected by a path with at least two tiles."""
+        """Spawn one mob if path is valid, quota remains, and player can afford it."""
+        if self.mobs_spawned_this_round >= self.mob_quota_this_wave:
+            return False
+        if self.current_branches < self.mob_costs[mob_index]:
+            return False
         pts = self.get_path_waypoints()
         if len(pts) < 2:
             return False
-        self.mobs.append(Mob(pts, self.spriteSize, DEFAULT_WIDTH / 2, 50, mob_index))
+        px, py = self.get_map_pivot()
+        self.mobs.append(Mob(pts, self.spriteSize, px, py, mob_index))
+        self.mobs_spawned_this_round += 1
         self._play_spawn_chirp()
         return True
 
     def _can_player_spawn_anything(self) -> bool:
-        """False when no usable path, no branches, or no affordable unlocked mob."""
+        if self.mobs_remaining_this_wave() <= 0:
+            return False
         if len(self.get_path_waypoints()) < 2:
             return False
-        avail = self.wave_mobs.get(min(self.wave, 5), [0, 1, 2, 3, 4])
-        for i in avail:
+        for i in self.get_available_mobs_for_wave():
             if self.is_mob_unlocked(i) and self.current_branches >= self.mob_costs[i]:
                 return True
         return False
 
     def _end_round_advance_wave(self) -> None:
         self.round_active = False
-        self.round_ended = True
-        self.edit_mode = True
         self.wave += 1
-        pygame.time.set_timer(self.SPAWN_MOB_EVENT, 0)
         for mob in self.mobs:
             mob.reset_animation()
-        # Reset all towers to idle state
         for tower_key in self.tower_states:
             self.tower_states[tower_key]["status"] = "idle"
             self.tower_states[tower_key]["frame"] = 0
+        if self.wave > MAX_WAVES:
+            return
+        self.begin_wave_setup()
 
     def initiate_cached_images(self):
         """Pre-load and cache all background images to avoid loading every frame"""
@@ -622,8 +643,20 @@ class Game:
         self.cached_font_medium = pygame.font.Font(font_path, 25)
         self.cached_font_small = pygame.font.Font(font_path, 20)
     
+    def get_map_pivot(self) -> tuple[float, float]:
+        return self.width / 3, 125 * 2.6
+
+    def sync_map_layout(self) -> None:
+        """Match loop bounds and tile scale to the active Maps.py level size."""
+        self.grid_rows, self.grid_cols = Maps.grid_dimensions(self.world_grid)
+        self.grid_size = max(self.grid_rows, self.grid_cols)
+        self.map_scale = REFERENCE_GRID_SIZE / float(self.grid_size)
+
+    def tile_scale_factor(self) -> float:
+        return TILE_DRAW_SCALE * self.map_scale
+
     def initiate_blocks(self):
-        scale_factor = 1.5
+        scale_factor = self.tile_scale_factor()
         self.tiles = {}
         for root, dir, files in os.walk(ASSETS_DIR):
             all_tiles = sorted(files)
@@ -631,7 +664,11 @@ class Game:
                 name = tile.split(".")[0]
                 if tile == "path.png":
                     self.path_icon = self.load_image(tile)
-                    self.path_icon = pygame.transform.scale(self.path_icon,(int(self.path_icon.get_width() * 1.5), int(self.path_icon.get_height() * 1.5)))
+                    ps = self.tile_scale_factor()
+                    self.path_icon = pygame.transform.scale(
+                        self.path_icon,
+                        (int(self.path_icon.get_width() * ps), int(self.path_icon.get_height() * ps)),
+                    )
                 temp_sprite = self.load_image(tile)
                 self.temp_tile = pygame.transform.scale(temp_sprite,(int(temp_sprite.get_width() * scale_factor), int(temp_sprite.get_height() * scale_factor)))
                 self.tiles[name] = self.temp_tile
@@ -639,7 +676,7 @@ class Game:
         self.h_tiles = {name : self.highlight_block(tile) for name, tile in self.tiles.items()}
 
     def initiate_towers(self):
-        scale_factor = 1.5
+        scale_factor = self.tile_scale_factor()
         self.tower_data = {} # Stores frames: self.tower_data["bee"]["idle"] = [...]
         self.tower_states = {} # Stores cooldowns: self.tower_states[(i, j)] = last_attack_time
 
@@ -710,8 +747,7 @@ class Game:
         self.start_screen = StartScreen(self.surface)
         self.clock = pygame.time.Clock()
         self.initiate_cutscenes()
-        self.initiate_blocks()
-        self.initiate_towers()
+        self.rebuild_map_scaled_assets()
         self.initiate_clouds()
         self.initiate_tree_health_bars()
         self.initiate_cached_images()  # Pre-load and cache background images
@@ -730,8 +766,7 @@ class Game:
         half_w = w / 2
         half_h = h / 4
 
-        pivot_x = DEFAULT_WIDTH / 3
-        pivot_y = 125 * 2.6
+        pivot_x, pivot_y = self.get_map_pivot()
 
         rel_x = self.x - pivot_x
         rel_y = self.y - pivot_y
@@ -743,8 +778,8 @@ class Game:
 
         self.hovered_tower_type = None 
 
-        for i in range(GRID_SIZE):
-            for j in range(GRID_SIZE):
+        for i in range(self.grid_rows):
+            for j in range(self.grid_cols):
 
                 draw_x = pivot_x + (j - i) * half_w - half_w
                 draw_y = pivot_y + (j + i) * half_h
@@ -800,7 +835,7 @@ class Game:
                 elif self.world_grid[i][j] == -1:
                     sprite = self.get_spawn_sprite(i, j)
                     self.surface.blit(sprite, (draw_x, draw_y))
-                    valid_path = self.is_grid_valid(self.world_grid, GRID_SIZE)
+                    valid_path = self.is_grid_valid(self.world_grid)
                     if valid_path:
                         #Show a Space bar - Start Round
                         pass
@@ -819,8 +854,8 @@ class Game:
     def find_all_ends(self):
         """Find all -1 positions (start and end points)"""
         ends = []
-        for i in range(GRID_SIZE):
-            for j in range(GRID_SIZE):
+        for i in range(self.grid_rows):
+            for j in range(self.grid_cols):
                 if self.world_grid[i][j] == -1:
                     ends.append((i, j))
         return ends
@@ -837,7 +872,7 @@ class Game:
         # Try all neighbors
         for di, dj in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
             ni, nj = curr_i + di, curr_j + dj
-            if 0 <= ni < GRID_SIZE and 0 <= nj < GRID_SIZE:
+            if 0 <= ni < self.grid_rows and 0 <= nj < self.grid_cols:
                 val = world_grid[ni][nj]
                 if (ni, nj) not in temp_visited and val in [1, -1]:
                     if self.can_reach_end((ni, nj), target_end, temp_visited, world_grid):
@@ -879,7 +914,7 @@ class Game:
             valid_neighbors = []
             for di, dj in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
                 ni, nj = curr_i + di, curr_j + dj
-                if 0 <= ni < GRID_SIZE and 0 <= nj < GRID_SIZE:
+                if 0 <= ni < self.grid_rows and 0 <= nj < self.grid_cols:
                     val = self.world_grid[ni][nj]
                     if (ni, nj) not in visited and val in [1, -1]:
                         # Check if this path can reach the end (not a dead end)
@@ -934,8 +969,8 @@ class Game:
         # 1. Check neighbors (1 or -1 means a path exists)
         tl = i > 0 and self.world_grid[i-1][j] in [1, -1]
         tr = j > 0 and self.world_grid[i][j-1] in [1, -1]
-        bl = j < GRID_SIZE - 1 and self.world_grid[i][j+1] in [1, -1]
-        br = i < GRID_SIZE - 1 and self.world_grid[i+1][j] in [1, -1]
+        bl = j < self.grid_cols - 1 and self.world_grid[i][j+1] in [1, -1]
+        br = i < self.grid_rows - 1 and self.world_grid[i+1][j] in [1, -1]
 
         # 2. Build a key based on which neighbors are True
         # We will use alphabetical order so 'tl' and 'tr' becomes 'tltr'
@@ -975,8 +1010,8 @@ class Game:
         # 1. Check neighbors (1 or -1 means a path exists)
         tl = i > 0 and self.world_grid[i-1][j] in [1, -1]
         tr = j > 0 and self.world_grid[i][j-1] in [1, -1]
-        bl = j < GRID_SIZE - 1 and self.world_grid[i][j+1] in [1, -1]
-        br = i < GRID_SIZE - 1 and self.world_grid[i+1][j] in [1, -1]
+        bl = j < self.grid_cols - 1 and self.world_grid[i][j+1] in [1, -1]
+        br = i < self.grid_rows - 1 and self.world_grid[i+1][j] in [1, -1]
 
         # 2. Build a key based on which neighbors are True
         # We will use alphabetical order so 'tl' and 'tr' becomes 'tltr'
@@ -1007,7 +1042,7 @@ class Game:
             # For towers, we need to know the tower type
             # Find which tower this key belongs to
             i, j = tower_key
-            tile = self.world_grid[i][j] if i < GRID_SIZE and j < GRID_SIZE else None
+            tile = self.world_grid[i][j] if i < self.grid_rows and j < self.grid_cols else None
             if tile in ["b2", "l1"]:
                 t_type = "bee" if tile == "b2" else "ladybug"
                 # Always animate idle towers
@@ -1022,10 +1057,10 @@ class Game:
         
         w, h = self.spriteSize
         half_w, half_h = w / 2, h / 4
-        pivot_x, pivot_y = DEFAULT_WIDTH / 3, 125 * 2.6
+        pivot_x, pivot_y = self.get_map_pivot()
 
-        for i in range(GRID_SIZE):
-            for j in range(GRID_SIZE):
+        for i in range(self.grid_rows):
+            for j in range(self.grid_cols):
                 tile = self.world_grid[i][j]
                 if tile in stats:
                     t_type = "bee" if tile == "b2" else "ladybug"
@@ -1119,7 +1154,11 @@ class Game:
         if self.round_active and not self.edit_mode:
             spawn_button_rect = pygame.Rect(700, 650, 180, 45)
             self.ui_hitboxes['spawn_wave'] = spawn_button_rect
-            button_color = (0, 160, 0) if self.current_branches >= self.mob_costs[self.selected_mob_type] else (100, 100, 100)
+            can_spawn = (
+                self.mobs_remaining_this_wave() > 0
+                and self.current_branches >= self.mob_costs[self.selected_mob_type]
+            )
+            button_color = (0, 160, 0) if can_spawn else (100, 100, 100)
             pygame.draw.rect(self.surface, button_color, spawn_button_rect)
             pygame.draw.rect(self.surface, (255, 255, 255), spawn_button_rect, 2)
             spawn_text = self.cached_font_medium.render('SPAWN MOB', True, (255, 255, 255))
@@ -1132,9 +1171,12 @@ class Game:
             self.cached_text_surfaces['wave'] = self.cached_font_large.render("Wave: " + romanNumeral, True, (0, 0, 0))
             self.last_wave = self.wave
         
-        if self.last_mobs_to_spawn != self.mobs_to_spawn:
-            self.cached_text_surfaces['mobs'] = self.cached_font_large.render(f'Mobs: {self.mobs_to_spawn}', True, (0, 0, 0))
-            self.last_mobs_to_spawn = self.mobs_to_spawn
+        mobs_left = self.mobs_remaining_this_wave()
+        if self.last_mobs_remaining != mobs_left:
+            self.cached_text_surfaces['mobs'] = self.cached_font_large.render(
+                f'Mobs left: {mobs_left}/{self.mob_quota_this_wave}', True, (0, 0, 0)
+            )
+            self.last_mobs_remaining = mobs_left
         
         if self.last_branches != self.current_branches:
             self.cached_text_surfaces['branches'] = self.cached_font_large.render(
@@ -1147,7 +1189,9 @@ class Game:
             romanNumeral = self.intToRoman(self.wave)
             self.cached_text_surfaces['wave'] = self.cached_font_large.render("Wave: " + romanNumeral, True, (0, 0, 0))
         if 'mobs' not in self.cached_text_surfaces:
-            self.cached_text_surfaces['mobs'] = self.cached_font_large.render(f'Mobs: {self.mobs_to_spawn}', True, (0, 0, 0))
+            self.cached_text_surfaces['mobs'] = self.cached_font_large.render(
+                f'Mobs left: {self.mobs_remaining_this_wave()}/{self.mob_quota_this_wave}', True, (0, 0, 0)
+            )
         if 'branches' not in self.cached_text_surfaces:
             self.cached_text_surfaces['branches'] = self.cached_font_large.render(
                 f"Branches  {self.current_branches}", True, (0, 0, 0)
@@ -1252,7 +1296,7 @@ class Game:
         return None
 
     def get_health_frame(self):
-        max_hp = getattr(self, "tree_health_max", TREE_HEALTH_MAX) or TREE_HEALTH_MAX
+        max_hp = getattr(self, "tree_health_max", 1) or 1
         pct = 100.0 * max(0, self.tree_health) / float(max_hp)
         for i, step in enumerate(self.health_steps):
             if pct >= step:
@@ -1262,7 +1306,7 @@ class Game:
     def draw_mob_purchase_ui(self):
         """Draw mob purchase squares on the right side of the screen"""
         mob_names = ['worm', 'butterfly', 'dragonfly', 'snail', 'beetle']
-        available_mobs = self.wave_mobs.get(min(self.wave, 5), [0, 1, 2, 3, 4])
+        available_mobs = self.get_available_mobs_for_wave()
         
         for i, mob_index in enumerate(available_mobs):
             x = self.mob_ui_start_x
@@ -1293,12 +1337,12 @@ class Game:
             self.ui_hitboxes[f'mob_purchase_{mob_index}'] = pygame.Rect(x, y, self.mob_ui_rect_size, self.mob_ui_rect_size)
     
     def draw_tree_of_life(self):
-        if self.tree_health > 0 and self.wave <= 20:
+        if self.tree_health > 0:
             current_health_img = self.get_health_frame()
             self.surface.blit(current_health_img, (40, 630))
             if hasattr(self, "cached_font_small"):
                 hp_txt = self.cached_font_small.render(
-                    f"{int(self.tree_health)} / {int(getattr(self, 'tree_health_max', TREE_HEALTH_MAX))}",
+                    f"{int(self.tree_health)} / {int(getattr(self, 'tree_health_max', 1))}",
                     True, (28, 55, 22),
                 )
                 self.surface.blit(hp_txt, (44, 608))
@@ -1336,7 +1380,7 @@ class Game:
     def get_object_layers(self):
         w, h = self.spriteSize
         half_w, half_h = w / 2, h / 4
-        pivot_x, pivot_y = DEFAULT_WIDTH / 3, 125 * 2.6
+        pivot_x, pivot_y = self.get_map_pivot()
 
         rel_x, rel_y = self.x - pivot_x, self.y - pivot_y
         mouse_j = (rel_x / half_w + rel_y / half_h) / 2
@@ -1347,8 +1391,8 @@ class Game:
         bobbing_offset = np.sin(pygame.time.get_ticks() * 0.005) * 5
 
         tree_elements = []
-        for i in range(GRID_SIZE):
-            for j in range(GRID_SIZE):
+        for i in range(self.grid_rows):
+            for j in range(self.grid_cols):
                 # Inside get_object_layers loop for 'b2' (Bee) or 'l1' (Ladybug):
                 tile_val = self.world_grid[i][j]
             
@@ -1513,12 +1557,7 @@ class Game:
             layer_queue.extend(self.get_object_layers())
 
             if self.round_active:
-                # Track killed mobs and award branches
                 alive_mobs = [m for m in self.mobs if m.health > 0]
-                killed_mobs = [m for m in self.mobs if m.health <= 0]
-                for m in killed_mobs:
-                    self.earned_branches_this_round += self.branches_per_mob_killed
-                    self.mobs_killed_this_round += 1
                 self.mobs = alive_mobs
                 
                 # When mobs reach the end, they damage the tree
@@ -1636,12 +1675,13 @@ class Game:
             pygame.display.update()
 
     #Optimize This
-    def is_grid_valid(self, world_grid, grid_size):
+    def is_grid_valid(self, world_grid):
+        grid_rows, grid_cols = Maps.grid_dimensions(world_grid)
         all_path_coords = []
         end_nodes = []  # All -1 positions (start and end)
 
-        for i in range(grid_size):
-            for j in range(grid_size):
+        for i in range(grid_rows):
+            for j in range(grid_cols):
                 val = world_grid[i][j]
                 
                 if val not in [1, -1]:
@@ -1655,7 +1695,7 @@ class Game:
                     has_path_neighbor = False
                     for di, dj in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
                         ni, nj = i + di, j + dj
-                        if 0 <= ni < grid_size and 0 <= nj < grid_size:
+                        if 0 <= ni < grid_rows and 0 <= nj < grid_cols:
                             neighbor = world_grid[ni][nj]
                             if neighbor in [1, -1]:
                                 has_path_neighbor = True
@@ -1686,9 +1726,22 @@ class Game:
 
         return len(visited) == len(all_path_coords)
     
-    def reset_grid(self):
-        self.paths_remaining = MAX_TILES
-        self.world_grid = copy.deepcopy(PRESET_WORLD)
+    def reset_grid(self, level_id: int | None = None):
+        if level_id is not None:
+            self.current_level_id = level_id
+        maps_data = Maps()
+        self.world_grid = copy.deepcopy(maps_data.levels[self.current_level_id])
+        self.sync_map_layout()
+        area_ratio = (self.grid_size / REFERENCE_GRID_SIZE) ** 2
+        self.paths_remaining = max(5, int(BASE_MAX_TILES * area_ratio))
+        if pygame.display.get_surface() is not None:
+            self.rebuild_map_scaled_assets()
+
+    def rebuild_map_scaled_assets(self) -> None:
+        """Re-scale tiles/towers when grid size changes (e.g. 10x10 -> 11x11)."""
+        self.initiate_blocks()
+        self.initiate_towers()
+        self.tower_states = {}
 
     def run_event_loop(self) -> None:
         while True:
@@ -1707,14 +1760,8 @@ class Game:
                         if self.cutscene_return_to_start:
                             self.showing_start_screen = True
                             # Reset game state when returning to start
-                            self.reset_grid()
                             self.wave = 1
-                            self.tree_health = TREE_HEALTH_MAX
-                            self.round_active = False
-                            self.round_ended = True
-                            self.edit_mode = True
-                            self.mobs = []
-                            self.mobs_to_spawn = 0
+                            self.begin_wave_setup()
                         # For test cutscene: continue to game
                         elif not self.showing_start_screen:
                             # Already in game, just continue
@@ -1782,8 +1829,12 @@ class Game:
                                 # Only allow purchasing during active round (after paths and towers are placed)
                                 if self.round_active and not self.edit_mode:
                                     mob_index = int(ui_action.split("_")[2])
-                                    available_mobs = self.wave_mobs.get(min(self.wave, 5), [0, 1, 2, 3, 4])
-                                    if mob_index in available_mobs and self.current_branches >= self.mob_costs[mob_index]:
+                                    available_mobs = self.get_available_mobs_for_wave()
+                                    if (
+                                        mob_index in available_mobs
+                                        and self.mobs_remaining_this_wave() > 0
+                                        and self.current_branches >= self.mob_costs[mob_index]
+                                    ):
                                         self.selected_mob_type = mob_index
                                         cost = self.mob_costs[mob_index]
                                         if self._spawn_mob_on_path(mob_index):
@@ -1791,7 +1842,7 @@ class Game:
                                 else:
                                     # Just select the mob type for preview even if round hasn't started
                                     mob_index = int(ui_action.split("_")[2])
-                                    available_mobs = self.wave_mobs.get(min(self.wave, 5), [0, 1, 2, 3, 4])
+                                    available_mobs = self.get_available_mobs_for_wave()
                                     if mob_index in available_mobs:
                                         self.selected_mob_type = mob_index
                             elif ui_action and ui_action.startswith("SPAWN_BOX_"):
@@ -1802,8 +1853,12 @@ class Game:
                                     self.selected_mob_type = mob_index
                             elif ui_action == "SPAWN_WAVE":
                                 if self.round_active and not self.edit_mode:
-                                    available_mobs = self.wave_mobs.get(min(self.wave, 5), [0, 1, 2, 3, 4])
-                                    if self.selected_mob_type in available_mobs and self.current_branches >= self.mob_costs[self.selected_mob_type]:
+                                    available_mobs = self.get_available_mobs_for_wave()
+                                    if (
+                                        self.selected_mob_type in available_mobs
+                                        and self.mobs_remaining_this_wave() > 0
+                                        and self.current_branches >= self.mob_costs[self.selected_mob_type]
+                                    ):
                                         cost = self.mob_costs[self.selected_mob_type]
                                         if self._spawn_mob_on_path(self.selected_mob_type):
                                             self.current_branches -= cost
@@ -1856,21 +1911,17 @@ class Game:
                                 self.selected_mob_type = 4
                         if event.key in (pygame.K_SPACE, pygame.K_RETURN):
                             # If round hasn't started, start the round
-                            if self.is_grid_valid(self.world_grid, GRID_SIZE) and not self.round_active and self.round_ended:
+                            if self.is_grid_valid(self.world_grid) and not self.round_active and self.round_ended:
                                 self.edit_mode = False
                                 self.round_active = True
                                 self.round_ended = False
-                                # Reset for new round - player will manually spawn mobs using branches
-                                # Base branches plus any earned from previous round
-                                base = self.base_branches[min(self.wave - 1, len(self.base_branches) - 1)]
-                                self.current_branches = base + self.earned_branches_this_round
-                                self.earned_branches_this_round = 0
-                                self.mobs_killed_this_round = 0
-                                # No automatic spawning - player controls mob spawning via branch purchases
-                            # If round is active, spawn a mob of the selected type
                             elif self.round_active and not self.edit_mode:
-                                available_mobs = self.wave_mobs.get(min(self.wave, 5), [0, 1, 2, 3, 4])
-                                if self.selected_mob_type in available_mobs and self.current_branches >= self.mob_costs[self.selected_mob_type]:
+                                available_mobs = self.get_available_mobs_for_wave()
+                                if (
+                                    self.selected_mob_type in available_mobs
+                                    and self.mobs_remaining_this_wave() > 0
+                                    and self.current_branches >= self.mob_costs[self.selected_mob_type]
+                                ):
                                     cost = self.mob_costs[self.selected_mob_type]
                                     if self._spawn_mob_on_path(self.selected_mob_type):
                                         self.current_branches -= cost
@@ -1885,21 +1936,18 @@ class Game:
                 if self.game_active:
                     self.victory()
             
-            # Check lose condition: tree survived past wave 20
-            if self.wave > 20 and self.tree_health > 0:
+            # Check lose condition: failed to kill the tree within the wave limit
+            if self.wave > MAX_WAVES and self.tree_health > 0:
                 if self.game_active:
                     self.defeat()
             
-            # Wave advances when round is active AND:
-            # - All mobs are gone from the field
-            # - AND either classic auto-spawn finished (mobs_to_spawn hit 0), OR manual mode and the
-            #   player can no longer spawn (out of branches / no path). Otherwise manual rounds would
-            #   "complete" immediately because mobs_to_spawn is always 0.
-            if self.round_active and len(self.mobs) == 0:
-                auto_spawn_done = (not self.manual_mob_round) and (self.mobs_to_spawn == 0)
-                manual_spawn_done = self.manual_mob_round and not self._can_player_spawn_anything()
-                if auto_spawn_done or manual_spawn_done:
-                    self._end_round_advance_wave()
+            # Wave ends when every mob for this wave was deployed and the field is clear
+            if (
+                self.round_active
+                and len(self.mobs) == 0
+                and self.mobs_spawned_this_round >= self.mob_quota_this_wave
+            ):
+                self._end_round_advance_wave()
 
             self.draw_window()
             if self.showing_start_screen:
