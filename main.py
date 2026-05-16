@@ -91,7 +91,7 @@ beetle = {
 # Maximum Branchs and Maximum Tiles per level
 WAVE_TILES = [20, 20, 21, 21, 21, 21, 21, 21, 22, 22, 23, 23, 24, 24, 25, 25, 26, 26, 27, 28]
 WAVE_BRANCHES = [15, 23, 27, 34, 40, 48, 52, 59, 65, 72, 78, 87, 91, 98, 102, 106, 107, 108, 109, 111]
-WAVE_TREE_HEALTH = [18, 21, 25, 30, 36, 42, 48, 55, 63, 72, 82, 93, 105, 118, 132, 147, 163, 180, 198, 220]
+WAVE_TREE_HEALTH = [18, 19, 20, 25, 31, 37, 38, 45, 53, 62, 72, 83, 95, 108, 122, 132, 147, 150, 168, 190]
 
 # Mob index: 0 spider (worm art), 1 butterfly, 2 dragonfly, 3 snail, 4 beetle
 MOB_HEALTH = [10, 20, 6, 45, 90]
