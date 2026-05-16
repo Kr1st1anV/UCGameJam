@@ -27,16 +27,17 @@ STAGE_CAVE = "cave"
 STAGE_SUNSHINE = "sunshine"
 # Background art filenames (place cave files in bground/ or assets/bg/cave/)
 STAGE_BACKGROUNDS = {
-    # Cave: sky + UI only (no floating island layer)
+    # Cave: underground sky (no floating island); sunshine uses sky + island
     STAGE_CAVE: ("cave_sky.png", None),
     STAGE_SUNSHINE: ("wbsky.png", "island.png"),
 }
+# Same play HUD frame for both stages; cave_sky / wbsky show through the viewport
 STAGE_UI_PLAY = {
-    STAGE_CAVE: "cave_UI_play.png",
+    STAGE_CAVE: "UI_play.png",
     STAGE_SUNSHINE: "UI_play.png",
 }
 STAGE_SETTINGS_PAGE = {
-    STAGE_CAVE: "cave_settingsmain.png",
+    STAGE_CAVE: "settingsmain.png",
     STAGE_SUNSHINE: "settingsmain.png",
 }
 STAGE_BG_FALLBACK = STAGE_BACKGROUNDS[STAGE_SUNSHINE]
@@ -230,7 +231,6 @@ HUD_TEXT_BROWN_DARK = (58, 40, 18)
 HUD_TEXT_BROWN_LIGHT = (120, 85, 45)
 HUD_TEXT_BROWN_ACCENT = (200, 145, 55)
 HUD_HEALTH_TEXT_SUNSHINE = HUD_TEXT_BROWN
-HUD_HEALTH_TEXT_CAVE = (210, 185, 150)
 # Temporary poison VFX until dedicated UI (grid -8 = bush)
 POISON_OUTLINE_COLOR = (40, 220, 70)
 POISON_OUTLINE_WIDTH = 3
@@ -665,10 +665,7 @@ class Game:
             "sound_right": pygame.Rect(spx + 425, spy + 185, 20, 28).inflate(12, 10),
             "surrender": pygame.Rect(spx + 80, spy + 248, 400, 55),
         }
-        if self.current_stage == STAGE_CAVE:
-            self._ingame_settings_hitboxes["credits"] = pygame.Rect(spx + 80, spy + 195, 280, 42)
-        else:
-            self._ingame_settings_hitboxes["instructions"] = pygame.Rect(spx + 80, spy + 220, 400, 42)
+        self._ingame_settings_hitboxes["instructions"] = pygame.Rect(spx + 80, spy + 220, 400, 42)
 
     def _draw_ingame_settings_overlay(self) -> None:
         veil = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
@@ -932,13 +929,12 @@ class Game:
             )
 
     def _draw_mission_briefing(self) -> None:
-        cave = getattr(self, "current_stage", STAGE_CAVE) == STAGE_CAVE
         veil = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
-        veil.fill((12, 8, 6, 215) if cave else (8, 12, 28, 210))
+        veil.fill((8, 12, 28, 210))
         self.surface.blit(veil, (0, 0))
         title = self.cached_font_large.render("You are the infestation.", True, UI_BORDER_BROWN)
         sub = self.cached_font_medium.render(
-            "Drain the Tree of Life in the dark grove..." if cave else "Drain the Tree of Life. Be careful of where you step...",
+            "Drain the Tree of Life. Be careful of where you step...",
             True,
             HUD_TEXT_BROWN_LIGHT,
         )
@@ -950,7 +946,7 @@ class Game:
         bx = (self.width - block_w) // 2
         by = (self.height - block_h) // 2
         panel = pygame.Surface((block_w, block_h), pygame.SRCALPHA)
-        panel.fill((42, 32, 24, 235) if cave else (30, 40, 70, 230))
+        panel.fill((30, 40, 70, 230))
         pygame.draw.rect(panel, UI_BORDER_BROWN, panel.get_rect(), 2)
         self.surface.blit(panel, (bx, by))
         y = by + 20
@@ -2055,8 +2051,6 @@ class Game:
         return self.health_frames[min(max(0, idx), n - 1)]
 
     def _health_hud_text_color(self) -> tuple[int, int, int]:
-        if getattr(self, "current_stage", STAGE_SUNSHINE) == STAGE_CAVE:
-            return HUD_HEALTH_TEXT_CAVE
         return HUD_HEALTH_TEXT_SUNSHINE
 
     def _refresh_tree_health_label(self, *, force: bool = False) -> None:
