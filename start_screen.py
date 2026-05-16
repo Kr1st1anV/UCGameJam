@@ -48,7 +48,8 @@ class StartScreen:
         )
 
         self.settings_volume_label = ""
-        self.settings_font = pygame.font.Font(None, 36)
+        font_path = os.path.join(os.path.dirname(__file__), 'fonts', 'Dico.ttf')
+        self.settings_font = pygame.font.Font(font_path, 25)
 
         self.instr_page = self.load_image('instr_man.png')
         self.instr_page = pygame.transform.scale(
@@ -110,13 +111,18 @@ class StartScreen:
         elif screen == "instructions":
             pygame.draw.rect(self.surface, color, self.close_instr_rect, 2)
     
+    def _sound_volume_label_center(self) -> tuple[int, int]:
+        lr = self.sound_left_rect
+        rr = self.sound_right_rect
+        return (lr.centerx + rr.centerx) // 2, (lr.centery + rr.centery) // 2
+
     def draw_settings(self):
         """Draws the buttons and the logo on top of the animation"""
         
         self.surface.blit(self.settings_page, self.settings_page_pos)
         if self.settings_volume_label:
-            label = self.settings_font.render(self.settings_volume_label, True, (45, 30, 18))
-            self.surface.blit(label, (self.settings_page_pos[0] + 368, self.settings_page_pos[1] + 178))
+            label = self.settings_font.render(self.settings_volume_label, True, (85, 58, 28))
+            self.surface.blit(label, label.get_rect(center=self._sound_volume_label_center()))
         self._draw_debug_outlines("settings")
 
     def set_settings_volume_label(self, text: str) -> None:
