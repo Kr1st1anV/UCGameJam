@@ -46,23 +46,36 @@ class StartScreen:
         self.logo_img = pygame.transform.scale(self.logo_img, (int(self.logo_img.get_width() * 0.7), int(self.logo_img.get_height() * 0.7)))
 
         self.settings_page = self.load_image('settingsmain.png')
-        self.settings_page = pygame.transform.scale(self.settings_page, (int(self.settings_page.get_width() * 0.8), int(self.settings_page.get_height() * 0.8)))
+        self.settings_page = pygame.transform.scale(
+            self.settings_page,
+            (int(self.settings_page.get_width() * 0.8), int(self.settings_page.get_height() * 0.8)),
+        )
+
+        self.settings_volume_label = ""
+        self.settings_font = pygame.font.Font(None, 36)
 
         self.instr_page = self.load_image('instr_man.png')
-        self.instr_page = pygame.transform.scale(self.instr_page, (int(self.instr_page.get_width() * 0.8), int(self.instr_page.get_height() * 0.8)))
+        self.instr_page = pygame.transform.scale(
+            self.instr_page,
+            (int(self.instr_page.get_width() * 0.8), int(self.instr_page.get_height() * 0.8)),
+        )
 
         self.start_rect = self.start_img.get_rect(topleft=(640, 160))
         self.settings_rect = self.settings_img.get_rect(topleft=(730, 610))
         self.tutorial_rect = self.tutorial_img.get_rect(topleft=(620, 400))
 
-        close_set_hitbox = self.settings_img.get_rect(topleft=(232, 172))
-        self.close_set_rect = close_set_hitbox.inflate(-200, -90)
+        # Hitboxes aligned to settingsmain.png blit at settings_page_pos
+        self.settings_page_pos = (250, 130)
+        spx, spy = self.settings_page_pos
+        self.close_set_rect = pygame.Rect(spx + 81, spy + 88, 21, 22).inflate(16, 14)
+        self.sound_left_rect = pygame.Rect(spx + 306, spy + 185, 20, 28).inflate(12, 10)
+        self.sound_right_rect = pygame.Rect(spx + 425, spy + 185, 20, 28).inflate(12, 10)
+        self.instr_rect = pygame.Rect(spx + 80, spy + 248, 400, 48)
 
-        instr_hitbox = self.settings_img.get_rect(topleft=(330, 340))
-        self.instr_rect = instr_hitbox.inflate(-20, -70)
-
-        close_instr_hitbox = self.settings_img.get_rect(topleft=(232, 72))
-        self.close_instr_rect = close_instr_hitbox.inflate(-200, -90)
+        # Instructions page (instr_man.png) blit at (250, 30)
+        self.instr_page_pos = (250, 30)
+        ipx, ipy = self.instr_page_pos
+        self.close_instr_rect = pygame.Rect(ipx + 81, ipy + 88, 21, 22).inflate(16, 14)
 
     def load_image(self, name):
         path = os.path.join(os.path.dirname(__file__), 'buttons', name)
@@ -94,17 +107,22 @@ class StartScreen:
         #pygame.draw.rect(self.surface, (255, 0, 0), self.close_set_rect, 5)
 
 ####################################################################################################################################
-        self.surface.blit(self.settings_page, (250, 130))
-        #pygame.draw.rect(self.surface, (255, 0, 0), self.close_set_rect, 5) # Red outline
-    
+        self.surface.blit(self.settings_page, self.settings_page_pos)
+        if self.settings_volume_label:
+            label = self.settings_font.render(self.settings_volume_label, True, (45, 30, 18))
+            # Volume readout beside the < > arrows on settingsmain.png
+            self.surface.blit(label, (self.settings_page_pos[0] + 368, self.settings_page_pos[1] + 178))
+
+    def set_settings_volume_label(self, text: str) -> None:
+        self.settings_volume_label = text
+
     def draw_instructions(self):
         """Draws the buttons and the logo on top of the animation"""
         
         #pygame.draw.rect(self.surface, (255, 0, 0), self.settings_hitbox, 5)
 
 ####################################################################################################################################
-        self.surface.blit(self.instr_page, (250, 30))
-        #pygame.draw.rect(self.surface, (255, 0, 0), self.close_instr_rect, 5) # Red outline
+        self.surface.blit(self.instr_page, self.instr_page_pos)
 
     def check_click(self, mouse_pos):
         if self.start_hitbox.collidepoint(mouse_pos):
@@ -117,8 +135,10 @@ class StartScreen:
     def check_settings(self, mouse_pos):
         if self.close_set_rect.collidepoint(mouse_pos):
             return "CLOSE"
-        if self.instr_rect.collidepoint(mouse_pos):
-            return "INSTRUCTIONS"
+        if self.sound_left_rect.collidepoint(mouse_pos):
+            return "SOUND_DOWN"
+        if self.sound_right_rect.collidepoint(mouse_pos):
+            return "SOUND_UP"
         if self.instr_rect.collidepoint(mouse_pos):
             return "INSTRUCTIONS"
         return None

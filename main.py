@@ -70,6 +70,7 @@ MOB_GRID_ROWS = 2
 MOB_GRID_SLOT_W = 56
 MOB_GRID_SLOT_H = 56
 SCRIPT_OF_EVIL_PAGE_COUNT = 5  # worm → beetle scroll pages
+SFX_VOLUME_MAX = 11
 # Slot center (x, y) per cell, row-major — tweak Y to move the whole grid up/down
 MOB_GRID_CENTERS = (
     (735, 340), (812, 340), (889, 340),
@@ -246,6 +247,7 @@ class Game:
         self._screen_shake_remaining = 0
         self._last_tower_sound_ms = 0
         self._feel_audio_ready = False
+        self.sfx_volume_level = SFX_VOLUME_MAX
         ########
         self.set_path = False
         self.rm_path = False
@@ -400,8 +402,30 @@ class Game:
             self._snd_tower_hit = self._make_tone_sound(180, 55, 0.1)
             self._snd_tree_hit = self._make_tone_sound(95, 160, 0.22)
             self._feel_audio_ready = True
+            self._apply_sfx_volume()
         except Exception:
             self._feel_audio_ready = False
+
+    def _sfx_volume_float(self) -> float:
+        return self.sfx_volume_level / float(SFX_VOLUME_MAX)
+
+    def _apply_sfx_volume(self) -> None:
+        if not self._feel_audio_ready:
+            return
+        vol = self._sfx_volume_float()
+        for snd in (self._snd_spawn, self._snd_tower_hit, self._snd_tree_hit):
+            if snd:
+                snd.set_volume(vol)
+
+    def _change_sfx_volume(self, delta: int) -> None:
+        self.sfx_volume_level = max(0, min(SFX_VOLUME_MAX, self.sfx_volume_level + delta))
+        self._apply_sfx_volume()
+        if self.sfx_volume_level > 0:
+            self._play_spawn_chirp()
+
+    def _update_settings_volume_label(self) -> None:
+        if hasattr(self, "start_screen"):
+            self.start_screen.set_settings_volume_label(str(self.sfx_volume_level))
 
     def _make_tone_sound(self, freq: float, duration_ms: int, volume: float):
         sr = 22050
@@ -413,11 +437,15 @@ class Game:
         return pygame.sndarray.make_sound(stereo)
 
     def _play_spawn_chirp(self) -> None:
+        if self.sfx_volume_level <= 0:
+            return
         self._init_feel_audio()
         if self._feel_audio_ready and self._snd_spawn:
             self._snd_spawn.play()
 
     def _play_tower_hit(self, now_ms: int) -> None:
+        if self.sfx_volume_level <= 0:
+            return
         if now_ms - self._last_tower_sound_ms < 90:
             return
         self._last_tower_sound_ms = now_ms
@@ -426,6 +454,8 @@ class Game:
             self._snd_tower_hit.play()
 
     def _play_tree_damage(self) -> None:
+        if self.sfx_volume_level <= 0:
+            return
         self._init_feel_audio()
         if self._feel_audio_ready and self._snd_tree_hit:
             self._snd_tree_hit.play()
@@ -698,11 +728,14 @@ class Game:
         self.defeat()
 
     def _dev_skip_wave(self) -> None:
-        """Hidden dev shortcut: treat the tree as destroyed for this wave."""
+        """Hidden dev shortcut: advance wave (works during build — path not required)."""
         if self.showing_start_screen or self.showing_cutscene:
             return
-        if not self.round_active and self.edit_mode:
-            return
+        self.mission_briefing_active = False
+        self.mobs = []
+        self.round_active = False
+        self.wave_deadline_ms = None
+        self._tree_kill_handled = False
         self.tree_health = 0
         self._on_tree_destroyed()
 
@@ -1632,6 +1665,7 @@ class Game:
             self.start_screen.draw()
             self.start_screen.draw_buttons()
             if self.showing_settings_screen:
+                self._update_settings_volume_label()
                 self.start_screen.draw_settings()
                 if self.showing_instructions_scene:
                     self.start_screen.draw_instructions()
@@ -1893,26 +1927,30 @@ class Game:
                                 self.showing_start_screen = False
                                 self.mission_briefing_active = True
                             if action == "TUTORIAL":
-                                self.showing_settings_screen = True
                                 self.showing_instructions_scene = True
                             if action == "SETTINGS":
                                 self.showing_settings_screen = True
-                        elif self.showing_settings_screen and not self.showing_instructions_scene:
-                            action = self.start_screen.check_settings(event.pos)
-                            if action == "INSTRUCTIONS":
-                                self.showing_instructions_scene = True
-                            if action == "CLOSE":
-                                self.showing_instructions_scene = False
-                                self.showing_settings_screen = False
-                        elif self.showing_settings_screen and self.showing_instructions_scene:
+                        elif self.showing_instructions_scene:
                             action = self.start_screen.check_closing_instructions(event.pos)
                             if action == "CLOSE":
                                 self.showing_instructions_scene = False
-                                self.showing_settings_screen = True
+                        elif self.showing_settings_screen:
+                            action = self.start_screen.check_settings(event.pos)
+                            if action == "CLOSE":
+                                self.showing_settings_screen = False
+                            elif action == "INSTRUCTIONS":
+                                self.showing_instructions_scene = True
+                            elif action == "SOUND_DOWN":
+                                self._change_sfx_volume(-1)
+                            elif action == "SOUND_UP":
+                                self._change_sfx_volume(1)
                 else:
                     if event.type == pygame.MOUSEMOTION:
                         self.x, self.y = event.pos
                     if self.mission_briefing_active:
+                        if event.type == pygame.KEYDOWN and event.key == pygame.K_F9:
+                            self._dev_skip_wave()
+                            continue
                         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                             self.mission_briefing_active = False
                             continue
