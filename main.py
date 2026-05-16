@@ -60,22 +60,42 @@ beetle = {
     "cost": 8,
 }
 # Maximum Branchs and Maximum Tiles per level
-tiles  = [20, 20, 21, 21, 21, 21, ]
+tiles  = [20, 20, 21, 21, 21, 21, 21, 21]
 branches = [6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34, 36, 38, 40, 42, 45]
 treehealth = [18, 21, 25, 30, 36, 42, 48, 55, 63, 72, 82, 93, 105, 118, 132, 147, 163, 180, 198, 220]
 
 # Mob index: 0 spider (worm art), 1 butterfly, 2 dragonfly, 3 snail, 4 beetle
-MOB_HEALTH = [20, 50, 20, 100, 50]
-MOB_DAMAGE = [3, 7, 3, 40, 9]
-MOB_SPEED = [6, 3, 4, 1, 3]  # design speeds; scaled in Mob.__init__
+MOB_HEALTH = [10, 20, 6, 45, 90]
+MOB_DAMAGE = [3, 6, 2, 10, 8]
+MOB_SPEED  = [2, 3, 5, 1, 2] # design speeds; scaled in Mob.__init__
 MOB_SPEED_SCALE = 0.42
-MOB_BRANCH_COSTS = [1, 5, 10, 20, 50]  # worm, butterfly, dragonfly, snail, beetle
+MOB_BRANCH_COSTS = [1, 4, 3, 6, 8]  # worm, butterfly, dragonfly, snail, beetle
 MOB_SPAWN_COOLDOWN_MS = 650
 
-# Towers: [range in grid tiles, damage, cooldown ms] — cooldown = 1000 / attack_speed
-TOWER_BEE = {"attack": 20, "attack_speed": 2, "range_tiles": 2}
-TOWER_LADYBUG = {"attack": 10, "attack_speed": 4, "range_tiles": 1}
-TOWER_BUSH = {"attack": 30, "attack_speed": 1, "range_tiles": 3}
+# Towers: [attack, attack_speed, range in grid tiles]
+# cooldown = 1000 / attack_speed
+
+TOWER_BEE = {
+    "attack": 20,
+    "attack_speed": 2,
+    "cooldown": 1000 // 2,
+    "range_tiles": 2
+}
+
+TOWER_LADYBUG = {
+    "attack": 10,
+    "attack_speed": 4,
+    "cooldown": 1000 // 4,
+    "range_tiles": 1
+}
+
+TOWER_BUSH = {
+    "attack": 30,
+    "attack_speed": 1,
+    "cooldown": 1000 // 1,
+    "range_tiles": 3
+}
+
 TOWER_TILE_TYPES = {
     "b2": ("bee", TOWER_BEE),
     "l1": ("ladybug", TOWER_LADYBUG),
