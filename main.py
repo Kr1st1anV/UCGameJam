@@ -20,6 +20,17 @@ MOBS_DIR = os.path.join(os.path.dirname(__file__), 'mobs')
 ASSETS_UI_DIR = os.path.join(os.path.dirname(__file__), 'assets', 'ui')
 ASSETS_MOBS_DIR = os.path.join(os.path.dirname(__file__), 'assets', 'mobs')
 
+TREE_HEALTH_MAX = 2500
+
+TREE_TAUNTS = [
+    "The oak laughs in mulch.",
+    "Integrated pest management sends regards.",
+    "That tickled. Try harder, larvae.",
+    "Photosynthesis stocks are up.",
+    "The sprinkler timer is counting down…",
+    "Bees. Ladybugs. Justice.",
+]
+
 rgb = tuple[int,int,int]
 num = random.randint(1,5)
 PRESET_WORLD = Maps().levels[6]
@@ -173,7 +184,16 @@ class Game:
         self.scroll_page = 0  # Current page in script of evil (0-4 for 5 mobs)
         self.cached_mob_icons = {}  # Cache mob icons for spawn boxes
         self.showing_surrender = False  # Surrender screen
-        self.debug_click_mode = True  # Print mouse positions on click for hitbox debugging
+        self.debug_click_mode = False  # Demo build: keep console clean
+
+        # Presentation / juice (hackathon polish)
+        self.mission_briefing_active = False
+        self._floating_text = []  # {text, x, y, vy, life, color}
+        self._tree_taunt = ""
+        self._tree_taunt_until_ms = 0
+        self._screen_shake_remaining = 0
+        self._last_tower_sound_ms = 0
+        self._feel_audio_ready = False
         ########
         self.set_path = False
         self.rm_path = False
@@ -193,11 +213,34 @@ class Game:
         self.mobs = [] # List to track all active mobs
         self.selected_mob_type = 0
         self.mobs_to_spawn = 0
+        # Manual spawn keeps mobs_to_spawn at 0; wave logic must not treat that as "wave finished"
+        # on the first empty frame (see run_event_loop wave advance).
+        self.manual_mob_round = True
         self.mob_spawn_number = [10,12,12,15,15,20,20,20,20]
         self.points = 0
 
-        self.branches = [10,10,10]
-        self.current_branches = self.branches[self.wave-1]
+        # Branch system
+        self.base_branches = [5, 8, 10, 12, 15]  # Base branches per wave
+        self.branches_per_mob_killed = 2  # Branches earned for each mob killed
+        self.current_branches = 0
+        self.earned_branches_this_round = 0  # Branches earned by killing mobs
+        self.mobs_killed_this_round = 0  # Counter for mobs killed this round
+        self.mob_costs = [1, 2, 3, 4, 5]  # Costs for worm, butterfly, dragonfly, snail, beetle
+        
+        # Wave configuration - defines which mobs are available each wave
+        self.wave_mobs = {
+            1: [0],  # Wave 1: Only worm
+            2: [0, 1],  # Wave 2: Worm and butterfly
+            3: [0, 1, 2],  # Wave 3: Worm, butterfly, dragonfly
+            4: [0, 1, 2, 3],  # Wave 4: Add snail
+            5: [0, 1, 2, 3, 4]  # Wave 5+: All mobs
+        }
+        
+        # Mob UI positioning for purchase squares on the right
+        self.mob_ui_rect_size = 60
+        self.mob_ui_start_x = 850
+        self.mob_ui_start_y = 150
+        self.mob_ui_spacing = 70
 
         pygame.font.init()
         
@@ -205,7 +248,7 @@ class Game:
         self.cached_text_surfaces = {}
         self.last_wave = 0
         self.last_mobs_to_spawn = -1
-        self.last_branches = -1
+        self.last_branches = 0
         self.last_paths_remaining = -1        
 
     def x_transform(self, x, w, h):
@@ -286,11 +329,13 @@ class Game:
 
     def victory(self):
         if self.game_active: # Prevent reloading every frame
+            pygame.mouse.set_visible(True)
             # Load victory cutscene and return to main menu when finished
             self.load_cutscene('victory', return_to_start=True)
 
     def defeat(self):
         if self.game_active:
+            pygame.mouse.set_visible(True)
             # Load defeat cutscene and return to main menu when finished
             self.load_cutscene('defeat', return_to_start=True)
     
@@ -307,9 +352,142 @@ class Game:
             img = pygame.transform.scale(img, (int(img.get_width() * 0.7), int(img.get_height() * 0.7)))
             self.health_frames.append(img)
             
-        # Initialize the tree health variable
-        self.tree_health = 2500
-    
+        # Initialize the tree health variable (max must match art steps)
+        self.tree_health_max = TREE_HEALTH_MAX
+        self.tree_health = self.tree_health_max
+
+    def _init_feel_audio(self) -> None:
+        if self._feel_audio_ready:
+            return
+        try:
+            if not pygame.mixer.get_init():
+                pygame.mixer.init(frequency=22050, size=-16, channels=2, buffer=512)
+            self._snd_spawn = self._make_tone_sound(520, 45, 0.12)
+            self._snd_tower_hit = self._make_tone_sound(180, 55, 0.1)
+            self._snd_tree_hit = self._make_tone_sound(95, 160, 0.22)
+            self._feel_audio_ready = True
+        except Exception:
+            self._feel_audio_ready = False
+
+    def _make_tone_sound(self, freq: float, duration_ms: int, volume: float):
+        sr = 22050
+        n = max(1, int(sr * duration_ms / 1000))
+        t = np.arange(n, dtype=np.float64) / sr
+        env = np.linspace(0.35, 0.0, n, dtype=np.float64) ** 0.8 + 0.15
+        wave = (volume * 32767.0 * env * np.sin(2 * np.pi * freq * t)).astype(np.int16)
+        stereo = np.column_stack((wave, wave))
+        return pygame.sndarray.make_sound(stereo)
+
+    def _play_spawn_chirp(self) -> None:
+        self._init_feel_audio()
+        if self._feel_audio_ready and self._snd_spawn:
+            self._snd_spawn.play()
+
+    def _play_tower_hit(self, now_ms: int) -> None:
+        if now_ms - self._last_tower_sound_ms < 90:
+            return
+        self._last_tower_sound_ms = now_ms
+        self._init_feel_audio()
+        if self._feel_audio_ready and self._snd_tower_hit:
+            self._snd_tower_hit.play()
+
+    def _play_tree_damage(self) -> None:
+        self._init_feel_audio()
+        if self._feel_audio_ready and self._snd_tree_hit:
+            self._snd_tree_hit.play()
+
+    def _push_floating_text(self, text: str, x: float, y: float, color: rgb, vy: float = -28.0, life: float = 0.9) -> None:
+        self._floating_text.append({
+            "text": text, "x": x, "y": y, "vy": vy, "life": life, "color": color,
+        })
+
+    def _update_feel(self) -> None:
+        dt = max(0.001, self.clock.get_time() / 1000.0)
+        for ft in self._floating_text:
+            ft["y"] += ft["vy"] * dt
+            ft["life"] -= dt
+        self._floating_text = [f for f in self._floating_text if f["life"] > 0]
+
+    def _draw_floating_text(self) -> None:
+        for ft in self._floating_text:
+            surf = self.cached_font_large.render(ft["text"], True, ft["color"])
+            self.surface.blit(surf, (int(ft["x"] - surf.get_width() // 2), int(ft["y"])))
+
+    def _on_tree_damage(self, total_damage: int) -> None:
+        if total_damage <= 0:
+            return
+        self._play_tree_damage()
+        self._screen_shake_remaining = min(22, self._screen_shake_remaining + 9)
+        self._push_floating_text(f"-{total_damage}", 120, 600, (255, 90, 40))
+        self._tree_taunt = random.choice(TREE_TAUNTS)
+        self._tree_taunt_until_ms = pygame.time.get_ticks() + 2800
+
+    def _draw_tree_taunt(self) -> None:
+        now = pygame.time.get_ticks()
+        if now > self._tree_taunt_until_ms or not self._tree_taunt:
+            return
+        line = self._tree_taunt
+        surf = self.cached_font_small.render(line, True, (40, 20, 10))
+        bg = pygame.Surface((surf.get_width() + 16, surf.get_height() + 10), pygame.SRCALPHA)
+        bg.fill((255, 255, 240, 210))
+        bx, by = 32, 560
+        self.surface.blit(bg, (bx, by))
+        self.surface.blit(surf, (bx + 8, by + 5))
+
+    def _draw_mission_briefing(self) -> None:
+        veil = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
+        veil.fill((8, 12, 28, 210))
+        self.surface.blit(veil, (0, 0))
+        title = self.cached_font_large.render("You are the infestation.", True, (255, 245, 200))
+        sub = self.cached_font_medium.render("Drain the Tree of Life. Towers are not on your side.", True, (230, 230, 240))
+        c1 = self.cached_font_small.render("Connect BOTH path ends with tiles (hammer), then SPACE to start the wave.", True, (200, 210, 255))
+        c2 = self.cached_font_small.render("Spend branches on the right to spawn. N = next wave when no bugs are on the map.", True, (200, 210, 255))
+        c3 = self.cached_font_small.render("SPACE / ENTER / ESC or click to march.", True, (255, 220, 120))
+        block_w = max(title.get_width(), sub.get_width(), c1.get_width(), c2.get_width(), c3.get_width()) + 48
+        block_h = title.get_height() + sub.get_height() + c1.get_height() + c2.get_height() + c3.get_height() + 50
+        bx = (self.width - block_w) // 2
+        by = (self.height - block_h) // 2
+        panel = pygame.Surface((block_w, block_h), pygame.SRCALPHA)
+        panel.fill((30, 40, 70, 230))
+        pygame.draw.rect(panel, (255, 200, 80), panel.get_rect(), 2)
+        self.surface.blit(panel, (bx, by))
+        y = by + 20
+        self.surface.blit(title, (bx + 24, y))
+        y += title.get_height() + 8
+        self.surface.blit(sub, (bx + 24, y))
+        y += sub.get_height() + 16
+        self.surface.blit(c1, (bx + 24, y))
+        y += c1.get_height() + 6
+        self.surface.blit(c2, (bx + 24, y))
+        y += c2.get_height() + 18
+        self.surface.blit(c3, (bx + 24, y))
+
+    def _spawn_mob_on_path(self, mob_index: int) -> bool:
+        """Spawn one mob if start/end are connected by a path with at least two tiles."""
+        pts = self.get_path_waypoints()
+        if len(pts) < 2:
+            return False
+        self.mobs.append(Mob(pts, self.spriteSize, DEFAULT_WIDTH / 2, 50, mob_index))
+        self._play_spawn_chirp()
+        return True
+
+    def _can_player_spawn_anything(self) -> bool:
+        """False when no usable path, no branches, or no affordable unlocked mob."""
+        if len(self.get_path_waypoints()) < 2:
+            return False
+        avail = self.wave_mobs.get(min(self.wave, 5), [0, 1, 2, 3, 4])
+        for i in avail:
+            if self.is_mob_unlocked(i) and self.current_branches >= self.mob_costs[i]:
+                return True
+        return False
+
+    def _end_round_advance_wave(self) -> None:
+        self.round_active = False
+        self.round_ended = True
+        self.edit_mode = True
+        self.wave += 1
+        pygame.time.set_timer(self.SPAWN_MOB_EVENT, 0)
+
     def initiate_cached_images(self):
         """Pre-load and cache all background images to avoid loading every frame"""
         try:
@@ -422,6 +600,7 @@ class Game:
         font_path = os.path.join(os.path.join(os.path.dirname(__file__), 'fonts'), "Dico.ttf")
         self.cached_font_large = pygame.font.Font(font_path, 35)
         self.cached_font_medium = pygame.font.Font(font_path, 25)
+        self.cached_font_small = pygame.font.Font(font_path, 20)
     
     def initiate_blocks(self):
         scale_factor = 1.5
@@ -503,7 +682,7 @@ class Game:
 
     def run_app(self) -> None:
         pygame.init()
-        pygame.display.set_caption("Power Offense")
+        pygame.display.set_caption("Heliosylva: Power Offense — you are the wave")
         self.surface = pygame.display.set_mode((self.width,self.height))
         self.showing_start_screen = True
         self.showing_settings_screen = False
@@ -836,6 +1015,7 @@ class Game:
 
                         if now - self.tower_states[tower_key]["last_atk"] > stats[tile][2]:
                             target.health -= stats[tile][1]
+                            self._play_tower_hit(now)
                             self.tower_states[tower_key]["last_atk"] = now
                             self.tower_states[tower_key]["status"] = "attack"
                             self.tower_states[tower_key]["frame"] = 0
@@ -876,7 +1056,20 @@ class Game:
             self.surface.blit(self.cached_book_of_lifeopen, (-40, 230))
         
         # Draw spawn boxes with mobs in order (dragonfly, worm, butterfly, snail, beetle)
+        spawn_box_x_start = 1130  # X position for spawn boxes
+        spawn_box_y_start = 580  # Starting Y position
         self.draw_spawn_boxes()
+
+        # Draw selected mob icon in bottom right
+        if self.selected_mob_type in self.cached_mob_icons:
+            selected_icon = self.cached_mob_icons[self.selected_mob_type]
+            # Position it below the spawn boxes
+            icon_x = spawn_box_x_start + 100  # A bit to the right of spawn boxes
+            icon_y = spawn_box_y_start + 100  # Below the spawn boxes
+            self.surface.blit(selected_icon, (icon_x, icon_y))
+            # Draw a label
+            selected_text = self.cached_font_large.render("Selected", True, (0, 0, 0))
+            self.surface.blit(selected_text, (icon_x, icon_y - 30))
 
         ##### UI PRESS #####
         # Use hitboxes that match the buttons already in the background image (UI_play.png)
@@ -899,6 +1092,16 @@ class Game:
         # Calculated: x=849, y=692, width=96, height=17
         self.ui_hitboxes['settings'] = pygame.Rect(849, 692, 96, 17)
 
+        if self.round_active and not self.edit_mode:
+            spawn_button_rect = pygame.Rect(700, 650, 180, 45)
+            self.ui_hitboxes['spawn_wave'] = spawn_button_rect
+            button_color = (0, 160, 0) if self.current_branches >= self.mob_costs[self.selected_mob_type] else (100, 100, 100)
+            pygame.draw.rect(self.surface, button_color, spawn_button_rect)
+            pygame.draw.rect(self.surface, (255, 255, 255), spawn_button_rect, 2)
+            spawn_text = self.cached_font_medium.render('SPAWN MOB', True, (255, 255, 255))
+            spawn_text_rect = spawn_text.get_rect(center=spawn_button_rect.center)
+            self.surface.blit(spawn_text, spawn_text_rect)
+
         # Cache text rendering - only re-render if values changed
         if self.last_wave != self.wave:
             romanNumeral = self.intToRoman(self.wave)
@@ -910,7 +1113,9 @@ class Game:
             self.last_mobs_to_spawn = self.mobs_to_spawn
         
         if self.last_branches != self.current_branches:
-            self.cached_text_surfaces['branches'] = self.cached_font_large.render(f':  {self.current_branches}', True, (0, 0, 0))
+            self.cached_text_surfaces['branches'] = self.cached_font_large.render(
+                f"Branches  {self.current_branches}", True, (0, 0, 0)
+            )
             self.last_branches = self.current_branches
         
         # Initialize text surfaces if they don't exist
@@ -920,7 +1125,9 @@ class Game:
         if 'mobs' not in self.cached_text_surfaces:
             self.cached_text_surfaces['mobs'] = self.cached_font_large.render(f'Mobs: {self.mobs_to_spawn}', True, (0, 0, 0))
         if 'branches' not in self.cached_text_surfaces:
-            self.cached_text_surfaces['branches'] = self.cached_font_large.render(f':  {self.current_branches}', True, (0, 0, 0))
+            self.cached_text_surfaces['branches'] = self.cached_font_large.render(
+                f"Branches  {self.current_branches}", True, (0, 0, 0)
+            )
         if 'units' not in self.cached_text_surfaces:
             self.cached_text_surfaces['units'] = self.cached_font_large.render(f'Units:', True, (0, 0, 0))
         
@@ -967,6 +1174,11 @@ class Game:
                 icon_rect = mob_icon.get_rect(center=(box_center_x, box_center_y))
                 self.surface.blit(mob_icon, icon_rect)
                 
+                # Draw cost text below the icon
+                cost_text = self.cached_font_large.render(str(self.mob_costs[i]), True, (0, 0, 0))
+                cost_rect = cost_text.get_rect(center=(box_center_x, box_center_y + 20))
+                self.surface.blit(cost_text, cost_rect)
+                
                 # Store hitbox for clicking - use exact woodbox dimensions
                 spawn_hitbox = pygame.Rect(x_pos, y_pos, self.cached_woodbox.get_width(), self.cached_woodbox.get_height())
                 self.ui_hitboxes[f'spawn_box_{i}'] = spawn_hitbox
@@ -981,6 +1193,12 @@ class Game:
         # Check surrender close button
         if self.showing_surrender and 'surrender_close' in self.ui_hitboxes and self.ui_hitboxes['surrender_close'].collidepoint(mouse_pos):
             return "SURRENDER_CLOSE"
+        
+        # Check mob purchase clicks on right side
+        for i in range(5):
+            purchase_key = f'mob_purchase_{i}'
+            if purchase_key in self.ui_hitboxes and self.ui_hitboxes[purchase_key].collidepoint(mouse_pos):
+                return f"MOB_PURCHASE_{i}"
         
         # Check spawn box clicks
         for i in range(5):  # 5 mob types
@@ -997,6 +1215,10 @@ class Game:
         # Check settings button
         if 'settings' in self.ui_hitboxes and self.ui_hitboxes['settings'].collidepoint(mouse_pos):
             return "SETTINGS"
+
+        # Check spawn wave button while round is active
+        if 'spawn_wave' in self.ui_hitboxes and self.ui_hitboxes['spawn_wave'].collidepoint(mouse_pos):
+            return "SPAWN_WAVE"
         
         # Check book buttons
         if 'book_of_evil' in self.ui_hitboxes and self.ui_hitboxes['book_of_evil'].collidepoint(mouse_pos):
@@ -1006,18 +1228,56 @@ class Game:
         return None
 
     def get_health_frame(self):
-        current_pct = max(0, self.tree_health)
-        
+        max_hp = getattr(self, "tree_health_max", TREE_HEALTH_MAX) or TREE_HEALTH_MAX
+        pct = 100.0 * max(0, self.tree_health) / float(max_hp)
         for i, step in enumerate(self.health_steps):
-            if current_pct >= step:
+            if pct >= step:
                 return self.health_frames[i]
-        
         return self.health_frames[-1]
+    
+    def draw_mob_purchase_ui(self):
+        """Draw mob purchase squares on the right side of the screen"""
+        mob_names = ['worm', 'butterfly', 'dragonfly', 'snail', 'beetle']
+        available_mobs = self.wave_mobs.get(min(self.wave, 5), [0, 1, 2, 3, 4])
+        
+        for i, mob_index in enumerate(available_mobs):
+            x = self.mob_ui_start_x
+            y = self.mob_ui_start_y + (i * self.mob_ui_spacing)
+            
+            # Draw background square
+            pygame.draw.rect(self.surface, (100, 100, 100), (x, y, self.mob_ui_rect_size, self.mob_ui_rect_size))
+            pygame.draw.rect(self.surface, (255, 255, 255), (x, y, self.mob_ui_rect_size, self.mob_ui_rect_size), 2)
+            
+            # Draw mob icon if available
+            if mob_index in self.cached_mob_icons:
+                mob_icon = self.cached_mob_icons[mob_index]
+                icon_rect = mob_icon.get_rect(center=(x + self.mob_ui_rect_size // 2, y + self.mob_ui_rect_size // 2))
+                self.surface.blit(mob_icon, icon_rect)
+            
+            # Draw cost text
+            cost = self.mob_costs[mob_index]
+            cost_color = (0, 200, 0) if self.current_branches >= cost else (200, 0, 0)
+            cost_text = self.cached_font_large.render(str(cost), True, cost_color)
+            cost_rect = cost_text.get_rect(topleft=(x + 5, y + 5))
+            self.surface.blit(cost_text, cost_rect)
+            
+            # Highlight if selected
+            if mob_index == self.selected_mob_type:
+                pygame.draw.rect(self.surface, (255, 255, 0), (x, y, self.mob_ui_rect_size, self.mob_ui_rect_size), 3)
+            
+            # Store hitbox for clicking
+            self.ui_hitboxes[f'mob_purchase_{mob_index}'] = pygame.Rect(x, y, self.mob_ui_rect_size, self.mob_ui_rect_size)
     
     def draw_tree_of_life(self):
         if self.tree_health > 0 and self.wave <= 20:
             current_health_img = self.get_health_frame()
             self.surface.blit(current_health_img, (40, 630))
+            if hasattr(self, "cached_font_small"):
+                hp_txt = self.cached_font_small.render(
+                    f"{int(self.tree_health)} / {int(getattr(self, 'tree_health_max', TREE_HEALTH_MAX))}",
+                    True, (28, 55, 22),
+                )
+                self.surface.blit(hp_txt, (44, 608))
         else:
             pass
 
@@ -1172,6 +1432,7 @@ class Game:
             else:
                 # If no images loaded, fill with black and show error
                 self.surface.fill((0, 0, 0))
+            pygame.mouse.set_visible(True)
             pygame.display.update()
         elif self.showing_start_screen:
             self.start_screen.draw()
@@ -1180,8 +1441,10 @@ class Game:
                 self.start_screen.draw_settings()
                 if self.showing_instructions_scene:
                     self.start_screen.draw_instructions()
+            pygame.mouse.set_visible(True)
             pygame.display.update()
         else:
+            self._update_feel()
             self.surface.fill(self.bgcolor)
             # Use cached images instead of loading every frame (with fallback if not initialized)
             if hasattr(self, 'cached_bg_image'):
@@ -1226,11 +1489,24 @@ class Game:
             layer_queue.extend(self.get_object_layers())
 
             if self.round_active:
-                self.mobs = [m for m in self.mobs if m.health > 0]
+                # Track killed mobs and award branches
+                alive_mobs = [m for m in self.mobs if m.health > 0]
+                killed_mobs = [m for m in self.mobs if m.health <= 0]
+                for m in killed_mobs:
+                    self.earned_branches_this_round += self.branches_per_mob_killed
+                    self.mobs_killed_this_round += 1
+                self.mobs = alive_mobs
                 
+                # When mobs reach the end, they damage the tree
                 finished_mobs = [m for m in self.mobs if m.at_end]
+                total_tree_damage = sum(m.dmg for m in finished_mobs)
                 for m in finished_mobs:
                     self.tree_health -= m.dmg
+                    # Ensure tree health doesn't go below 0
+                    if self.tree_health < 0:
+                        self.tree_health = 0
+                if total_tree_damage > 0:
+                    self._on_tree_damage(total_tree_damage)
                 
                 self.mobs = [m for m in self.mobs if not m.at_end]
                 
@@ -1271,6 +1547,7 @@ class Game:
             self.surface.blit(self.cached_text_surfaces['tiles'], (40, 120))
             
             self.draw_UI()
+            self.draw_mob_purchase_ui()
             
             # Draw cursor icon (hammer for build mode, shovel for delete mode)
             if self.edit_mode:
@@ -1305,6 +1582,18 @@ class Game:
             else:
                 # Show default cursor when not in edit mode
                 pygame.mouse.set_visible(True)
+            
+            self._draw_floating_text()
+            self._draw_tree_taunt()
+            if self._screen_shake_remaining > 0 and not self.mission_briefing_active:
+                snapshot = self.surface.copy()
+                self.surface.fill(self.bgcolor)
+                ox = random.randint(-6, 6)
+                oy = random.randint(-6, 6)
+                self.surface.blit(snapshot, (ox, oy))
+                self._screen_shake_remaining -= 1
+            if self.mission_briefing_active:
+                self._draw_mission_briefing()
             
             pygame.display.update()
 
@@ -1382,7 +1671,7 @@ class Game:
                             # Reset game state when returning to start
                             self.reset_grid()
                             self.wave = 1
-                            self.tree_health = 2500
+                            self.tree_health = TREE_HEALTH_MAX
                             self.round_active = False
                             self.round_ended = True
                             self.edit_mode = True
@@ -1403,6 +1692,10 @@ class Game:
                             if action == "START":
                                 # Start the game normally
                                 self.showing_start_screen = False
+                                self.mission_briefing_active = True
+                            if action == "TUTORIAL":
+                                self.showing_settings_screen = True
+                                self.showing_instructions_scene = True
                             if action == "SETTINGS":
                                 self.showing_settings_screen = True
                         elif self.showing_settings_screen and not self.showing_instructions_scene:
@@ -1420,7 +1713,19 @@ class Game:
                 else:
                     if event.type == pygame.MOUSEMOTION:
                         self.x, self.y = event.pos
-                    elif event.type == pygame.MOUSEBUTTONDOWN: # 1 is left, 3 is right
+                    if self.mission_briefing_active:
+                        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                            self.mission_briefing_active = False
+                            continue
+                        if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                            self.mission_briefing_active = False
+                            continue
+                        if event.type == pygame.KEYDOWN and event.key in (pygame.K_SPACE, pygame.K_RETURN):
+                            self.mission_briefing_active = False
+                            # Same keypress must still reach KEYDOWN below (start wave / spawn).
+                        else:
+                            continue
+                    if event.type == pygame.MOUSEBUTTONDOWN: # 1 is left, 3 is right
                         if event.button == 1:
                             ui_action = self.ui_check_click(event.pos)
 ################################################################################################################
@@ -1434,12 +1739,36 @@ class Game:
                                 self.showing_book = not self.showing_book
                                 if self.showing_scroll is True:
                                     self.showing_scroll = not self.showing_scroll
+                            elif ui_action and ui_action.startswith("MOB_PURCHASE_"):
+                                # Clicked on mob purchase square on the right side
+                                # Only allow purchasing during active round (after paths and towers are placed)
+                                if self.round_active and not self.edit_mode:
+                                    mob_index = int(ui_action.split("_")[2])
+                                    available_mobs = self.wave_mobs.get(min(self.wave, 5), [0, 1, 2, 3, 4])
+                                    if mob_index in available_mobs and self.current_branches >= self.mob_costs[mob_index]:
+                                        self.selected_mob_type = mob_index
+                                        cost = self.mob_costs[mob_index]
+                                        if self._spawn_mob_on_path(mob_index):
+                                            self.current_branches -= cost
+                                else:
+                                    # Just select the mob type for preview even if round hasn't started
+                                    mob_index = int(ui_action.split("_")[2])
+                                    available_mobs = self.wave_mobs.get(min(self.wave, 5), [0, 1, 2, 3, 4])
+                                    if mob_index in available_mobs:
+                                        self.selected_mob_type = mob_index
                             elif ui_action and ui_action.startswith("SPAWN_BOX_"):
                                 # Clicked on a spawn box - select that mob type
                                 mob_index = int(ui_action.split("_")[2])
                                 # Only select if mob is unlocked
                                 if self.is_mob_unlocked(mob_index):
                                     self.selected_mob_type = mob_index
+                            elif ui_action == "SPAWN_WAVE":
+                                if self.round_active and not self.edit_mode:
+                                    available_mobs = self.wave_mobs.get(min(self.wave, 5), [0, 1, 2, 3, 4])
+                                    if self.selected_mob_type in available_mobs and self.current_branches >= self.mob_costs[self.selected_mob_type]:
+                                        cost = self.mob_costs[self.selected_mob_type]
+                                        if self._spawn_mob_on_path(self.selected_mob_type):
+                                            self.current_branches -= cost
                             elif ui_action == "SCROLL_LEFT":
                                 # Navigate to previous page
                                 self.scroll_page = (self.scroll_page - 1) % 5
@@ -1463,6 +1792,9 @@ class Game:
                             self.set_path = False
                             self.rm_path = False
                     elif event.type == pygame.KEYDOWN:
+                        if event.key == pygame.K_n:
+                            if self.round_active and not self.edit_mode and len(self.mobs) == 0:
+                                self._end_round_advance_wave()
                         if event.key == pygame.K_r:
                             if not self.round_active:
                                 self.reset_grid()
@@ -1484,52 +1816,52 @@ class Game:
                         if event.key == pygame.K_5:
                             if self.wave >= 12:
                                 self.selected_mob_type = 4
-                        if event.key == pygame.K_SPACE:
+                        if event.key in (pygame.K_SPACE, pygame.K_RETURN):
+                            # If round hasn't started, start the round
                             if self.is_grid_valid(self.world_grid, GRID_SIZE) and not self.round_active and self.round_ended:
                                 self.edit_mode = False
                                 self.round_active = True
                                 self.round_ended = False
-                                # Always spawn 10 mobs per round, regardless of branches
-                                self.mobs_to_spawn = 10
-                                pygame.time.set_timer(self.SPAWN_MOB_EVENT, 1000)
+                                # Reset for new round - player will manually spawn mobs using branches
+                                # Base branches plus any earned from previous round
+                                base = self.base_branches[min(self.wave - 1, len(self.base_branches) - 1)]
+                                self.current_branches = base + self.earned_branches_this_round
+                                self.earned_branches_this_round = 0
+                                self.mobs_killed_this_round = 0
+                                # No automatic spawning - player controls mob spawning via branch purchases
+                            # If round is active, spawn a mob of the selected type
+                            elif self.round_active and not self.edit_mode:
+                                available_mobs = self.wave_mobs.get(min(self.wave, 5), [0, 1, 2, 3, 4])
+                                if self.selected_mob_type in available_mobs and self.current_branches >= self.mob_costs[self.selected_mob_type]:
+                                    cost = self.mob_costs[self.selected_mob_type]
+                                    if self._spawn_mob_on_path(self.selected_mob_type):
+                                        self.current_branches -= cost
 
                     elif event.type == self.SPAWN_MOB_EVENT:
-                        self.round_ended = False
-                        if self.mobs_to_spawn > 0:
-                            pts = self.get_path_waypoints()
-                            new_mob = Mob(pts, self.spriteSize, DEFAULT_WIDTH/2, 50, self.selected_mob_type)
-                            self.mobs_to_spawn -= 1
-                            self.mobs.append(new_mob)
-                        # Stop spawning if no more mobs to spawn
-                        if self.mobs_to_spawn <= 0:
-                            pygame.time.set_timer(self.SPAWN_MOB_EVENT, 0)
+                        # Automatic spawning disabled - player controls spawning
+                        pass
                     elif event.type == pygame.KEYUP:
                         pass
-            # Check win condition: completed all waves (wave > 20)
-            if self.wave > 20 and self.tree_health > 0:
+            # Check win condition: tree health depleted (player killed the tree)
+            if self.tree_health <= 0:
                 if self.game_active:
                     self.victory()
             
-            # Check lose condition: tree health depleted
-            if self.tree_health <= 0:
+            # Check lose condition: tree survived past wave 20
+            if self.wave > 20 and self.tree_health > 0:
                 if self.game_active:
                     self.defeat()
             
             # Wave advances when round is active AND:
-            # - All mobs have spawned (mobs_to_spawn == 0)
-            # - AND all mobs are defeated (len(self.mobs) == 0)
+            # - All mobs are gone from the field
+            # - AND either classic auto-spawn finished (mobs_to_spawn hit 0), OR manual mode and the
+            #   player can no longer spawn (out of branches / no path). Otherwise manual rounds would
+            #   "complete" immediately because mobs_to_spawn is always 0.
             if self.round_active and len(self.mobs) == 0:
-                # Check if spawning is complete (all mobs spawned)
-                spawning_complete = (self.mobs_to_spawn == 0)
-                
-                if spawning_complete:
-                    self.round_active = False
-                    self.round_ended = True
-                    self.edit_mode = True
-                    self.wave += 1
-                    # Stop spawn timer if it's still running
-                    pygame.time.set_timer(self.SPAWN_MOB_EVENT, 0)
-                    # Optional: self.paths_remaining = MAX_TILES # Reset tiles for next round?
+                auto_spawn_done = (not self.manual_mob_round) and (self.mobs_to_spawn == 0)
+                manual_spawn_done = self.manual_mob_round and not self._can_player_spawn_anything()
+                if auto_spawn_done or manual_spawn_done:
+                    self._end_round_advance_wave()
 
             self.draw_window()
             if self.showing_start_screen:

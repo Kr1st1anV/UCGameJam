@@ -38,8 +38,8 @@ class StartScreen:
 
         ##################################################################
         self.tutorial_img = self.load_image('tutorial.png')
-        tutorial_full_rect = self.settings_img.get_rect(topleft=(620, 400))
-        self.tutorial_hitbox = tutorial_full_rect.inflate(-80, -100)
+        tutorial_full_rect = self.tutorial_img.get_rect(topleft=(620, 400))
+        self.tutorial_hitbox = tutorial_full_rect.inflate(-40, -30)
 
         ##################################################################
         self.logo_img = self.load_image('Heliosylva.png')
@@ -86,6 +86,7 @@ class StartScreen:
         self.surface.blit(self.logo_img, (0, 0))
         self.surface.blit(self.start_img, self.start_rect)
         self.surface.blit(self.settings_img, self.settings_rect)
+        self.surface.blit(self.tutorial_img, self.tutorial_rect)
     
     def draw_settings(self):
         """Draws the buttons and the logo on top of the animation"""
@@ -108,6 +109,8 @@ class StartScreen:
     def check_click(self, mouse_pos):
         if self.start_hitbox.collidepoint(mouse_pos):
             return "START"
+        if self.tutorial_hitbox.collidepoint(mouse_pos):
+            return "TUTORIAL"
         if self.settings_rect.collidepoint(mouse_pos):
             return "SETTINGS"
         return None
