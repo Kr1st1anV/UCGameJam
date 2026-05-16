@@ -33,7 +33,8 @@ TREE_TAUNTS = [
 
 rgb = tuple[int,int,int]
 num = random.randint(1,5)
-PRESET_WORLD = Maps().levels[6]
+PRESET_WORLD = Maps().levels[1]
+
 
 #SPRITES_DIR = os.path.join(ASSETS_DIR, 'sprites')
 
