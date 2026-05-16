@@ -917,6 +917,13 @@ class Game:
         self.rm_path = False
         self.hammer_animating = False
 
+    def _is_v_path_tile(self, tile_val) -> bool:
+        """Walkable path tiles (not towers or bushes)."""
+        return tile_val in (1, -1)
+
+    def _is_v_bush_tile(self, tile_val) -> bool:
+        return tile_val == -8
+
     def _obstacle_draw_alpha(self, tile_val, i: int, j: int) -> int:
         """Hold V: hide towers/trees (alpha 0). Hover still dims one tower type."""
         if self.see_through_obstacles:
@@ -1154,7 +1161,7 @@ class Game:
                         self.surface.blit(self.tiles["dark_grass"], (draw_x, draw_y)) # Normal Grass
                 elif self.world_grid[i][j] == 1:
                     sprite = self.get_path_sprite(i, j)
-                    if self.see_through_obstacles:
+                    if self.see_through_obstacles and self._is_v_path_tile(1):
                         self.surface.blit(self.highlight_block(sprite), (draw_x, draw_y))
                     elif is_hovered and not self.build and not self._path_edit_locked():
                         self.surface.blit(self.highlight_block(sprite), (draw_x, draw_y))
@@ -1162,7 +1169,10 @@ class Game:
                         self.surface.blit(sprite, (draw_x, draw_y))
                 elif self.world_grid[i][j] == -1:
                     sprite = self.get_spawn_sprite(i, j)
-                    self.surface.blit(sprite, (draw_x, draw_y))
+                    if self.see_through_obstacles and self._is_v_path_tile(-1):
+                        self.surface.blit(self.highlight_block(sprite), (draw_x, draw_y))
+                    else:
+                        self.surface.blit(sprite, (draw_x, draw_y))
                     valid_path = self.is_grid_valid(self.world_grid)
                     if valid_path:
                         #Show a Space bar - Start Round
@@ -1177,7 +1187,9 @@ class Game:
                 elif self.world_grid[i][j] == -9:
                     self.surface.blit(self.tiles["red"], (draw_x, draw_y)) # Tree
                 elif self.world_grid[i][j] == -8:
-                    if self.see_through_obstacles or (
+                    if (
+                        self.see_through_obstacles and self._is_v_bush_tile(-8)
+                    ) or (
                         is_hovered and self.build and not self._path_edit_locked()
                     ):
                         self.surface.blit(self.h_tiles["dark_grass"], (draw_x, draw_y))
@@ -1738,8 +1750,6 @@ class Game:
                             surf = pygame.transform.scale(surf,(int(surf.get_width() * 2), int(surf.get_height() * 2)))
                         
                         bush_tile = -8 if is_bush else tile_val
-                        if self.see_through_obstacles and is_bush:
-                            surf = self.highlight_block(surf)
                         surf.set_alpha(self._obstacle_draw_alpha(bush_tile, i, j))
 
                         if state_info["flip"]:
