@@ -29,7 +29,7 @@ MOB_HEALTH = [20, 50, 20, 100, 50]
 MOB_DAMAGE = [3, 7, 3, 40, 9]
 MOB_SPEED = [6, 3, 4, 1, 3]  # design speeds; scaled in Mob.__init__
 MOB_SPEED_SCALE = 0.42
-MOB_BRANCH_COSTS = [1, 5, 8, 10, 15]  # worm, butterfly, dragonfly, snail, beetle
+MOB_BRANCH_COSTS = [1, 5, 10, 20, 50]  # worm, butterfly, dragonfly, snail, beetle
 MOB_SPAWN_COOLDOWN_MS = 650
 
 # Towers: [range in grid tiles, damage, cooldown ms] — cooldown = 1000 / attack_speed
@@ -64,23 +64,17 @@ HUD_TIMER_TEXT_ANCHOR = (755, 220)
 
 # Mob index: 0 worm, 1 butterfly, 2 dragonfly, 3 snail, 4 beetle
 MOB_UNLOCK_WAVES = (1, 2, 4, 7, 10)
-# 2×3 Spawn grid on UI_play.png (screen coords, UI_PLAY_SCALE)
+# 2×3 Spawn grid on UI_play.png (screen coords @ UI_PLAY_SCALE)
 MOB_GRID_COLS = 3
 MOB_GRID_ROWS = 2
+MOB_GRID_SLOT_W = 56
+MOB_GRID_SLOT_H = 56
+SCRIPT_OF_EVIL_PAGE_COUNT = 5  # worm → beetle scroll pages
+# Slot center (x, y) per cell, row-major — tweak Y to move the whole grid up/down
 MOB_GRID_CENTERS = (
-    (735, 338), (812, 338), (889, 338),
+    (735, 340), (812, 340), (889, 340),
     (735, 408), (812, 408), (889, 408),
 )
-MOB_SLOT_SIZE = (50, 38)
-
-TREE_TAUNTS = [
-    "The oak laughs in mulch.",
-    "Integrated pest management sends regards.",
-    "That tickled. Try harder, larvae.",
-    "Photosynthesis stocks are up.",
-    "The sprinkler timer is counting down…",
-    "Bees. Ladybugs. Justice.",
-]
 
 rgb = tuple[int,int,int]
 num = random.randint(1, 5)
@@ -249,8 +243,6 @@ class Game:
         # Presentation / juice (hackathon polish)
         self.mission_briefing_active = False
         self._floating_text = []  # {text, x, y, vy, life, color}
-        self._tree_taunt = ""
-        self._tree_taunt_until_ms = 0
         self._screen_shake_remaining = 0
         self._last_tower_sound_ms = 0
         self._feel_audio_ready = False
@@ -455,26 +447,30 @@ class Game:
             surf = self.cached_font_large.render(ft["text"], True, ft["color"])
             self.surface.blit(surf, (int(ft["x"] - surf.get_width() // 2), int(ft["y"])))
 
-    def _on_tree_damage(self, total_damage: int) -> None:
-        if total_damage <= 0:
+    def _tree_of_life_float_pos(self) -> tuple[int, int]:
+        """Screen center of the Tree of Life portrait (tree_of_life.png)."""
+        origin = (210, 30)
+        if hasattr(self, "cached_tree_life_image"):
+            rect = self.cached_tree_life_image.get_rect(topleft=origin)
+            return rect.centerx, rect.centery
+        return origin[0] + 80, origin[1] + 90
+
+    def _on_tree_damage(self, finished_mobs: list) -> None:
+        if not finished_mobs:
             return
         self._play_tree_damage()
         self._screen_shake_remaining = min(22, self._screen_shake_remaining + 9)
-        self._push_floating_text(f"-{total_damage}", 120, 600, (255, 90, 40))
-        self._tree_taunt = random.choice(TREE_TAUNTS)
-        self._tree_taunt_until_ms = pygame.time.get_ticks() + 2800
-
-    def _draw_tree_taunt(self) -> None:
-        now = pygame.time.get_ticks()
-        if now > self._tree_taunt_until_ms or not self._tree_taunt:
-            return
-        line = self._tree_taunt
-        surf = self.cached_font_small.render(line, True, (40, 20, 10))
-        bg = pygame.Surface((surf.get_width() + 16, surf.get_height() + 10), pygame.SRCALPHA)
-        bg.fill((255, 255, 240, 210))
-        bx, by = 32, 560
-        self.surface.blit(bg, (bx, by))
-        self.surface.blit(surf, (bx + 8, by + 5))
+        cx, cy = self._tree_of_life_float_pos()
+        for i, mob in enumerate(finished_mobs):
+            dmg = int(mob.dmg)
+            if dmg <= 0:
+                continue
+            self._push_floating_text(
+                f"-{dmg}",
+                cx + random.randint(-14, 14),
+                cy - 10 - i * 24,
+                (230, 45, 35),
+            )
 
     def _draw_mission_briefing(self) -> None:
         veil = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
@@ -516,8 +512,18 @@ class Game:
 
     def _mob_grid_slot_rect(self, slot: int) -> pygame.Rect:
         cx, cy = self._mob_grid_slot_center(slot)
-        w, h = MOB_SLOT_SIZE
-        return pygame.Rect(cx - w // 2, cy - h // 2, w, h)
+        return pygame.Rect(
+            cx - MOB_GRID_SLOT_W // 2,
+            cy - MOB_GRID_SLOT_H // 2,
+            MOB_GRID_SLOT_W,
+            MOB_GRID_SLOT_H,
+        )
+
+    def _draw_mob_slot_frame(self, rect: pygame.Rect, *, selected: bool = False) -> None:
+        """Border aligned to the full slot rect (UI slots are already drawn underneath)."""
+        pygame.draw.rect(self.surface, (58, 42, 30), rect, 1)
+        if selected:
+            pygame.draw.rect(self.surface, (255, 220, 0), rect, 3)
 
     def _refresh_wave_and_branch_hud(self) -> None:
         """Keep wave + branch labels in sync when a new wave starts or branches change."""
@@ -731,7 +737,10 @@ class Game:
             self.cached_scrolls = {}
             scroll_names = ['scrollworm.png', 'scrollbutterfly.png', 'scrolldragonfly.png', 'scrollsnail.png', 'scrollbeetle.png']
             for i, scroll_name in enumerate(scroll_names):
-                scroll_raw = pygame.image.load(os.path.join(ASSETS_UI_DIR, 'scroll', scroll_name)).convert_alpha()
+                scroll_path = os.path.join(BGROUND_DIR, scroll_name)
+                if not os.path.isfile(scroll_path):
+                    scroll_path = os.path.join(ASSETS_UI_DIR, 'scroll', scroll_name)
+                scroll_raw = pygame.image.load(scroll_path).convert_alpha()
                 self.cached_scrolls[i] = pygame.transform.scale(scroll_raw, (int(scroll_raw.get_width() * 0.8), int(scroll_raw.get_height() * 0.8)))
             
             # Book of life - use book1.png from assets
@@ -741,11 +750,6 @@ class Game:
             # Surrender page
             surrender_raw = pygame.image.load(os.path.join(ASSETS_UI_DIR, 'surrenderpage.png')).convert_alpha()
             self.cached_surrender_page = pygame.transform.scale(surrender_raw, (int(surrender_raw.get_width() * 0.8), int(surrender_raw.get_height() * 0.8)))
-            
-            # Spawn box image
-            woodbox_raw = self.load_world('woodbox.png')
-            slot = MOB_SLOT_SIZE[0]
-            self.cached_woodbox = pygame.transform.smoothscale(woodbox_raw, (slot, slot))
             
             # Load hammer cursor images (for build mode)
             self.hammer_images = []
@@ -1381,46 +1385,45 @@ class Game:
         """Mob buttons in the 2×3 Spawn grid on UI_play.png (5 mobs + 1 empty slot)."""
         for slot in range(MOB_GRID_COLS * MOB_GRID_ROWS):
             slot_rect = self._mob_grid_slot_rect(slot)
-            cx, cy = self._mob_grid_slot_center(slot)
-            x_pos, y_pos = slot_rect.x, slot_rect.y
-            box_w, box_h = slot_rect.width, slot_rect.height
+            cx, cy = slot_rect.centerx, slot_rect.centery
 
             if slot < 5:
                 mob_index = slot
                 unlocked = self.is_mob_unlocked(mob_index)
+                selected = mob_index == self.selected_mob_type
 
-                if hasattr(self, 'cached_woodbox'):
-                    self.surface.blit(
-                        self.cached_woodbox,
-                        self.cached_woodbox.get_rect(center=(cx, cy)),
-                    )
-                    if not unlocked:
-                        dim = pygame.Surface((box_w, box_h), pygame.SRCALPHA)
-                        dim.fill((20, 15, 10, 160))
-                        self.surface.blit(dim, slot_rect)
+                if not unlocked:
+                    dim = pygame.Surface(slot_rect.size, pygame.SRCALPHA)
+                    dim.fill((20, 15, 10, 140))
+                    self.surface.blit(dim, slot_rect.topleft)
 
                 if unlocked and mob_index in self.cached_mob_icons:
                     mob_icon = self.cached_mob_icons[mob_index]
-                    icon_rect = mob_icon.get_rect(center=(cx, cy - 4))
+                    icon_rect = mob_icon.get_rect(
+                        center=(cx, cy - 6),
+                    )
                     self.surface.blit(mob_icon, icon_rect)
                     cost = self.mob_costs[mob_index]
                     affordable = self.current_branches >= cost
                     cost_color = (0, 200, 0) if affordable else (200, 0, 0)
                     cost_text = self.cached_font_small.render(str(cost), True, cost_color)
-                    cost_rect = cost_text.get_rect(midtop=(cx, cy + 10))
+                    cost_rect = cost_text.get_rect(
+                        midbottom=(cx, slot_rect.bottom - 3),
+                    )
                     self.surface.blit(cost_text, cost_rect)
                     self.ui_hitboxes[f'spawn_box_{mob_index}'] = slot_rect
-                    if mob_index == self.selected_mob_type:
-                        pygame.draw.rect(self.surface, (255, 255, 0), slot_rect, 2)
-                    self._draw_spawn_cooldown_overlay(x_pos, y_pos, box_w, box_h, mob_index)
+                    self._draw_mob_slot_frame(slot_rect, selected=selected)
+                    self._draw_spawn_cooldown_overlay(
+                        slot_rect.x, slot_rect.y, slot_rect.width, slot_rect.height, mob_index
+                    )
                 else:
                     lock_txt = self.cached_font_small.render(
                         f"W{self.get_unlock_wave(mob_index)}", True, (90, 90, 90)
                     )
-                    lock_rect = lock_txt.get_rect(center=(cx, cy))
-                    self.surface.blit(lock_txt, lock_rect)
+                    self.surface.blit(lock_txt, lock_txt.get_rect(center=slot_rect.center))
+                    self._draw_mob_slot_frame(slot_rect, selected=False)
             else:
-                pygame.draw.rect(self.surface, (60, 45, 35), slot_rect, 1)
+                self._draw_mob_slot_frame(slot_rect, selected=False)
     
     def ui_check_click(self, mouse_pos):
         if 'dev_skip_wave' in self.ui_hitboxes and self.ui_hitboxes['dev_skip_wave'].collidepoint(mouse_pos):
@@ -1685,13 +1688,12 @@ class Game:
                 
                 # When mobs reach the end, they damage the tree
                 finished_mobs = [m for m in self.mobs if m.at_end]
-                total_tree_damage = sum(m.dmg for m in finished_mobs)
                 for m in finished_mobs:
                     self.tree_health -= m.dmg
                     if self.tree_health < 0:
                         self.tree_health = 0
-                if total_tree_damage > 0:
-                    self._on_tree_damage(total_tree_damage)
+                if finished_mobs:
+                    self._on_tree_damage(finished_mobs)
                 if self.tree_health <= 0:
                     self._on_tree_destroyed()
                 
@@ -1774,7 +1776,6 @@ class Game:
                 pygame.mouse.set_visible(True)
             
             self._draw_floating_text()
-            self._draw_tree_taunt()
             if self._screen_shake_remaining > 0 and not self.mission_briefing_active:
                 snapshot = self.surface.copy()
                 self.surface.fill(self.bgcolor)
@@ -1930,7 +1931,7 @@ class Game:
                             if ui_action == "BOOK_OF_EVIL":
                                 self.showing_scroll = not self.showing_scroll
                                 if self.showing_scroll:
-                                    self.scroll_page = self.selected_mob_type  # Start on current mob's page
+                                    self.scroll_page = 0
                                 if self.showing_book is True:
                                     self.showing_book = not self.showing_book
                             elif ui_action == "BOOK_OF_LIFE":
@@ -1964,11 +1965,12 @@ class Game:
                                         if self._spawn_mob_on_path(self.selected_mob_type):
                                             self.current_branches -= cost
                             elif ui_action == "SCROLL_LEFT":
-                                # Navigate to previous page
-                                self.scroll_page = (self.scroll_page - 1) % 5
+                                if self.scroll_page > 0:
+                                    self.scroll_page -= 1
                             elif ui_action == "SCROLL_RIGHT":
-                                # Navigate to next page
-                                self.scroll_page = (self.scroll_page + 1) % 5
+                                last = SCRIPT_OF_EVIL_PAGE_COUNT - 1
+                                if self.scroll_page < last:
+                                    self.scroll_page += 1
                             elif ui_action == "DEV_SKIP_WAVE":
                                 self._dev_skip_wave()
                             elif ui_action == "SETTINGS":
