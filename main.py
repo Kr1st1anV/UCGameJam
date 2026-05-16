@@ -152,10 +152,30 @@ def _fit_surface_in_box(img: pygame.Surface, box_w: int, box_h: int) -> pygame.S
         img, (max(1, int(w * scale)), max(1, int(h * scale)))
     )
 
-# Towers: [range in grid tiles, damage, cooldown ms] — cooldown = 1000 / attack_speed
-TOWER_BEE = {"attack": 20, "attack_speed": 2, "range_tiles": 2}
-TOWER_LADYBUG = {"attack": 10, "attack_speed": 4, "range_tiles": 1}
-TOWER_BUSH = {"attack": 30, "attack_speed": 1, "range_tiles": 3}
+# Towers: [attack, attack_speed, range in grid tiles]
+# cooldown = 1000 / attack_speed
+
+TOWER_BEE = {
+    "attack": 20,
+    "attack_speed": 2,
+    "cooldown": 1000 // 2,
+    "range_tiles": 2
+}
+
+TOWER_LADYBUG = {
+    "attack": 10,
+    "attack_speed": 4,
+    "cooldown": 1000 // 4,
+    "range_tiles": 1
+}
+
+TOWER_BUSH = {
+    "attack": 30,
+    "attack_speed": 1,
+    "cooldown": 1000 // 1,
+    "range_tiles": 3
+}
+
 TOWER_TILE_TYPES = {
     "b2": ("bee", TOWER_BEE),
     "l1": ("ladybug", TOWER_LADYBUG),
