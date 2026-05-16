@@ -88,9 +88,9 @@ beetle = {
     "cost": 8,
 }
 # Maximum Branchs and Maximum Tiles per level
-tiles  = [20, 20, 21, 21, 21, 21, 21, 21]
-branches = [15, 23, 27, 34, 40, 48, 52, 59, 65, 72, 78, 87, 91, 98, 102, 106, 107, 108, 109, 111]
-treehealth = [18, 21, 25, 30, 36, 42, 48, 55, 63, 72, 82, 93, 105, 118, 132, 147, 163, 180, 198, 220]
+WAVE_TILES = [20, 20, 21, 21, 21, 21, 21, 21, 22, 22, 23, 23, 24, 24, 25, 25, 26, 26, 27, 28]
+WAVE_BRANCHES = [15, 23, 27, 34, 40, 48, 52, 59, 65, 72, 78, 87, 91, 98, 102, 106, 107, 108, 109, 111]
+WAVE_TREE_HEALTH = [18, 21, 25, 30, 36, 42, 48, 55, 63, 72, 82, 93, 105, 118, 132, 147, 163, 180, 198, 220]
 
 # Mob index: 0 spider (worm art), 1 butterfly, 2 dragonfly, 3 snail, 4 beetle
 MOB_HEALTH = [10, 20, 6, 45, 90]
@@ -109,10 +109,10 @@ MOB_BRANCH_COSTS = [m["cost"] for m in _MOBS_BY_INDEX]
 MOB_SPAWN_COOLDOWN_MS = 650
 MOB_SPRITE_HEIGHT_RATIO = 0.52  # mob frame height vs isometric tile height
 
-# Per-wave budgets (20 waves)
-WAVE_TILES = [20, 20, 21, 21, 21, 21, 21, 21, 22, 22, 23, 23, 24, 24, 25, 25, 26, 26, 27, 28]
-WAVE_BRANCHES = [6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34, 36, 38, 40, 42, 45]
-WAVE_TREE_HEALTH = [18, 21, 25, 30, 36, 42, 48, 55, 63, 72, 82, 93, 105, 118, 132, 147, 163, 180, 198, 220]
+# # Per-wave budgets (20 waves)
+# WAVE_TILES = [20, 20, 21, 21, 21, 21, 21, 21, 22, 22, 23, 23, 24, 24, 25, 25, 26, 26, 27, 28]
+# WAVE_BRANCHES = [6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34, 36, 38, 40, 42, 45]
+# WAVE_TREE_HEALTH = [18, 21, 25, 30, 36, 42, 48, 55, 63, 72, 82, 93, 105, 118, 132, 147, 163, 180, 198, 220]
 
 
 def wave_index(wave: int) -> int:
