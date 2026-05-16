@@ -24,6 +24,23 @@ MAX_WAVES = 20
 WAVE_COMBAT_SECONDS = 30
 TILE_DRAW_SCALE = 1.75  # larger isometric tiles (reference layout was 1.5)
 
+# Mob index: 0 spider (worm art), 1 butterfly, 2 dragonfly, 3 snail, 4 beetle
+MOB_HEALTH = [20, 50, 20, 100, 50]
+MOB_DAMAGE = [3, 7, 3, 40, 9]
+MOB_SPEED = [6, 3, 4, 1, 3]  # design speeds; scaled in Mob.__init__
+MOB_SPEED_SCALE = 0.42
+MOB_BRANCH_COSTS = [1, 8, 5, 10, 15]  # worm, butterfly, dragonfly, snail, beetle
+
+# Towers: [range in grid tiles, damage, cooldown ms] — cooldown = 1000 / attack_speed
+TOWER_BEE = {"attack": 20, "attack_speed": 2, "range_tiles": 2}
+TOWER_LADYBUG = {"attack": 10, "attack_speed": 4, "range_tiles": 1}
+TOWER_BUSH = {"attack": 30, "attack_speed": 1, "range_tiles": 3}
+TOWER_TILE_TYPES = {
+    "b2": ("bee", TOWER_BEE),
+    "l1": ("ladybug", TOWER_LADYBUG),
+    "-8": ("bush", TOWER_BUSH),
+}
+
 # Right-side HUD stack (aligned over branches + clock art on UI_play.png)
 HUD_WAVE_POS = (700, 8)
 HUD_TILES_POS = (700, 36)
@@ -64,25 +81,23 @@ class Mob:
         w, h = sprite_size
         half_w, half_h = w / 2, h / 4
         self.mobcolor = [(200, 50, 50),(93, 63, 211),(0, 255, 255)]
-        # Mob order: worm, butterfly, dragonfly, snail, beetle (matches script of evil order)
-        # File names need to match what's in assets/mobs directories
+        # Mob order: spider(worm sprites), butterfly, dragonfly, snail, beetle
         self.mobtype = [
-            ['worm moving_0001.png', 'worm moving_0002.png', 'worm moving_0003.png', 'worm moving_0004.png'],  # 0: worm
-            ['butterfly_0001.png', 'butterfly_0002.png', 'butterfly_0003.png', 'butterfly_0004.png'],  # 1: butterfly
-            ['dragonfly flying_0001.png', 'dragonfly flying_0002.png', 'dragonfly flying_0003.png', 'dragonfly flying_0004.png'],  # 2: dragonfly
-            ['snail idle_0001.png', 'snail idle_0002.png', 'snail idle_0003.png', 'snail idle_0004.png'],  # 3: snail
-            ['beetle_0001.png', 'beetle_0002.png', 'beetle_0003.png', 'beetle_0004.png']  # 4: beetle
+            ['worm moving_0001.png', 'worm moving_0002.png', 'worm moving_0003.png', 'worm moving_0004.png'],  # 0: spider
+            ['butterfly_0001.png', 'butterfly_0002.png', 'butterfly_0003.png', 'butterfly_0004.png'],
+            ['dragonfly flying_0001.png', 'dragonfly flying_0002.png', 'dragonfly flying_0003.png', 'dragonfly flying_0004.png'],
+            ['snail idle_0001.png', 'snail idle_0002.png', 'snail idle_0003.png', 'snail idle_0004.png'],
+            ['beetle_0001.png', 'beetle_0002.png', 'beetle_0003.png', 'beetle_0004.png'],
         ]
-        # Health values in order: worm, butterfly, dragonfly, snail, beetle
-        self.mob_health_values = [10, 50, 20, 100, 120]
-        # Damage values in order: worm, butterfly, dragonfly, snail, beetle
-        self.mob_dmg = [2, 4, 6, 3, 3]
+        self.mob_health_values = list(MOB_HEALTH)
+        self.mob_dmg = list(MOB_DAMAGE)
         if mob_type is not None:
             self.randmob = mob_type
         else:
             self.randmob = random.randint(0, len(self.mobtype) - 1)
         self.health = self.mob_health_values[self.randmob]
         self.dmg = self.mob_dmg[self.randmob]
+        self.speed = MOB_SPEED_SCALE * MOB_SPEED[self.randmob]
 
         self.mobframes = [self.load_mob(frame) for frame in self.mobtype[self.randmob]]
 
@@ -98,7 +113,6 @@ class Mob:
             
         self.pos = pygame.Vector2(self.waypoints[0]) if self.waypoints else pygame.Vector2(0,0)
         self.target_idx = 1
-        self.speed = 1.0
         self.at_end = False
 
         self.mobframes_right = [self.load_mob(f) for f in self.mobtype[self.randmob]]
@@ -236,7 +250,8 @@ class Game:
 
         # Branches buy mobs during the wave; quota caps how many can be deployed
         self.current_branches = 0
-        self.mob_costs = [1, 2, 3, 4, 5]  # worm, butterfly, dragonfly, snail, beetle
+        self.mob_costs = list(MOB_BRANCH_COSTS)
+        self._tree_kill_handled = False
         
         # Which bug types appear each wave (unlocks over time)
         self.wave_mobs = {
@@ -507,7 +522,47 @@ class Game:
         self.last_branches = -1
         self.wave_deadline_ms = None
         self.last_timer_second = -1
+        self._tree_kill_handled = False
         if hasattr(self, 'cached_font_large'):
+            self._refresh_wave_and_branch_hud()
+
+    def _tower_range_pixels(self, radius_tiles: float) -> float:
+        w, h = self.spriteSize
+        cell = (w / 2 + h / 4) / 1.15
+        return radius_tiles * cell
+
+    def _tower_combat_stats(self) -> dict:
+        """Map grid tile -> [range_px, damage, cooldown_ms]."""
+        out = {}
+        for tile, (_t_type, spec) in TOWER_TILE_TYPES.items():
+            cooldown = int(1000 / spec["attack_speed"])
+            out[tile] = [
+                self._tower_range_pixels(spec["range_tiles"]),
+                spec["attack"],
+                cooldown,
+            ]
+        return out
+
+    def _on_tree_destroyed(self) -> None:
+        """Tree HP hit zero: advance to next wave (or win on final wave)."""
+        if self._tree_kill_handled or not self.game_active:
+            return
+        self._tree_kill_handled = True
+        self.mobs = []
+        self.round_active = False
+        self.wave_deadline_ms = None
+        pygame.mouse.set_visible(True)
+
+        if self.wave >= MAX_WAVES:
+            self.victory()
+            return
+
+        self.wave += 1
+        if self.wave > MAX_WAVES:
+            self.defeat()
+            return
+        self.begin_wave_setup()
+        if hasattr(self, "cached_font_large"):
             self._refresh_wave_and_branch_hud()
 
     def _start_wave_combat(self) -> None:
@@ -1096,8 +1151,8 @@ class Game:
             # Find which tower this key belongs to
             i, j = tower_key
             tile = self.world_grid[i][j] if i < self.grid_rows and j < self.grid_cols else None
-            if tile in ["b2", "l1"]:
-                t_type = "bee" if tile == "b2" else "ladybug"
+            if tile in TOWER_TILE_TYPES:
+                t_type = TOWER_TILE_TYPES[tile][0]
                 # Always animate idle towers
                 self.tower_states[tower_key]["frame"] += 0.15
                 if self.tower_states[tower_key]["frame"] >= len(self.tower_data[t_type][state]):
@@ -1106,7 +1161,7 @@ class Game:
     def handle_tower_logic(self):
         """Handle tower combat logic only (no animation)."""
         now = pygame.time.get_ticks()
-        stats = {"b2": [150, 5, 1000], "l1": [120, 3, 800]} 
+        stats = self._tower_combat_stats()
         
         w, h = self.spriteSize
         half_w, half_h = w / 2, h / 4
@@ -1116,7 +1171,7 @@ class Game:
             for j in range(self.grid_cols):
                 tile = self.world_grid[i][j]
                 if tile in stats:
-                    t_type = "bee" if tile == "b2" else "ladybug"
+                    t_type = TOWER_TILE_TYPES[tile][0]
                     tower_key = (i, j)
                     
                     if tower_key not in self.tower_states:
@@ -1621,11 +1676,12 @@ class Game:
                 total_tree_damage = sum(m.dmg for m in finished_mobs)
                 for m in finished_mobs:
                     self.tree_health -= m.dmg
-                    # Ensure tree health doesn't go below 0
                     if self.tree_health < 0:
                         self.tree_health = 0
                 if total_tree_damage > 0:
                     self._on_tree_damage(total_tree_damage)
+                if self.tree_health <= 0:
+                    self._on_tree_destroyed()
                 
                 self.mobs = [m for m in self.mobs if not m.at_end]
                 
@@ -1976,11 +2032,8 @@ class Game:
                         pass
                     elif event.type == pygame.KEYUP:
                         pass
-            # Check win condition: tree health depleted (player killed the tree)
-            if self.tree_health <= 0:
-                if self.game_active:
-                    self.victory()
-            
+            # Tree kill is handled in combat update via _on_tree_destroyed()
+
             # Check lose condition: failed to kill the tree within the wave limit
             if self.wave > MAX_WAVES and self.tree_health > 0:
                 if self.game_active:
