@@ -27,7 +27,8 @@ STAGE_CAVE = "cave"
 STAGE_SUNSHINE = "sunshine"
 # Background art filenames (place cave files in bground/ or assets/bg/cave/)
 STAGE_BACKGROUNDS = {
-    STAGE_CAVE: ("cave_sky.png", "cave_island.png"),
+    # Cave: sky + UI only (no floating island layer)
+    STAGE_CAVE: ("cave_sky.png", None),
     STAGE_SUNSHINE: ("wbsky.png", "island.png"),
 }
 STAGE_UI_PLAY = {
@@ -88,16 +89,70 @@ beetle = {
 }
 # Maximum Branchs and Maximum Tiles per level
 tiles  = [20, 20, 21, 21, 21, 21, 21, 21]
-branches = [15, 23, 27, 34, 40, 48, 52, 59, 65, 72, 78, 87, 91, 98, 102, 106, 107, 108, 109, 111]
+branches = [6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34, 36, 38, 40, 42, 45]
 treehealth = [18, 21, 25, 30, 36, 42, 48, 55, 63, 72, 82, 93, 105, 118, 132, 147, 163, 180, 198, 220]
 
 # Mob index: 0 spider (worm art), 1 butterfly, 2 dragonfly, 3 snail, 4 beetle
 MOB_HEALTH = [10, 20, 6, 45, 90]
-MOB_DAMAGE = [3, 6, 4, 10, 8]
-MOB_SPEED  = [2, 3, 6, 1, 2] # design speeds; scaled in Mob.__init__
+MOB_DAMAGE = [3, 6, 2, 10, 8]
+MOB_SPEED  = [2, 3, 5, 1, 2] # design speeds; scaled in Mob.__init__
 MOB_SPEED_SCALE = 0.42
-MOB_BRANCH_COSTS = [1, 2, 3, 4, 5]  # worm, butterfly, dragonfly, snail, beetle
+MOB_BRANCH_COSTS = [1, 4, 3, 6, 8]  # worm, butterfly, dragonfly, snail, beetle
 MOB_SPAWN_COOLDOWN_MS = 650
+MOB_SPRITE_HEIGHT_RATIO = 0.52  # mob frame height vs isometric tile height
+
+# Per-wave budgets (20 waves)
+WAVE_TILES = [20, 20, 21, 21, 21, 21, 21, 21, 22, 22, 23, 23, 24, 24, 25, 25, 26, 26, 27, 28]
+WAVE_BRANCHES = [6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34, 36, 38, 40, 42, 45]
+WAVE_TREE_HEALTH = [18, 21, 25, 30, 36, 42, 48, 55, 63, 72, 82, 93, 105, 118, 132, 147, 163, 180, 198, 220]
+
+
+def wave_index(wave: int) -> int:
+    return max(0, min(int(wave) - 1, MAX_WAVES - 1))
+
+
+def branches_for_wave(wave: int) -> int:
+    return WAVE_BRANCHES[wave_index(wave)]
+
+
+def tree_health_for_wave(wave: int) -> int:
+    return WAVE_TREE_HEALTH[wave_index(wave)]
+
+
+def tiles_for_wave(wave: int) -> int:
+    return WAVE_TILES[wave_index(wave)]
+
+
+def mob_pixel_speed(mob_index: int, sprite_size: tuple[int, int]) -> float:
+    """Movement speed from mob dict speed stat (1–4) and current tile scale."""
+    stat = float(_MOBS_BY_INDEX[mob_index]["speed"])
+    w, h = sprite_size
+    cell = (w / 2 + h / 4) / 1.15
+    return max(0.35, stat * cell * MOB_SPEED_CELL_FACTOR)
+
+
+def mob_animation_speed(mob_index: int) -> float:
+    """Walk cycle rate tied to the same speed stat as movement."""
+    stat = float(_MOBS_BY_INDEX[mob_index]["speed"])
+    return 0.05 + stat * 0.04
+
+
+def _scale_surface_to_height(img: pygame.Surface, target_height: int) -> pygame.Surface:
+    w, h = img.get_size()
+    if h <= 0 or h == target_height:
+        return img
+    scale = target_height / float(h)
+    return pygame.transform.smoothscale(img, (max(1, int(w * scale)), target_height))
+
+
+def _fit_surface_in_box(img: pygame.Surface, box_w: int, box_h: int) -> pygame.Surface:
+    w, h = img.get_size()
+    if w <= 0 or h <= 0:
+        return img
+    scale = min(box_w / float(w), box_h / float(h))
+    return pygame.transform.smoothscale(
+        img, (max(1, int(w * scale)), max(1, int(h * scale)))
+    )
 
 # Towers: [attack, attack_speed, range in grid tiles]
 # cooldown = 1000 / attack_speed
@@ -166,6 +221,8 @@ HUD_TEXT_BROWN = (85, 58, 28)
 HUD_TEXT_BROWN_DARK = (58, 40, 18)
 HUD_TEXT_BROWN_LIGHT = (120, 85, 45)
 HUD_TEXT_BROWN_ACCENT = (200, 145, 55)
+HUD_HEALTH_TEXT_SUNSHINE = HUD_TEXT_BROWN
+HUD_HEALTH_TEXT_CAVE = (210, 185, 150)
 # Temporary poison VFX until dedicated UI (grid -8 = bush)
 POISON_OUTLINE_COLOR = (40, 220, 70)
 POISON_OUTLINE_WIDTH = 3
@@ -178,6 +235,10 @@ MOB_GRID_CENTERS = (
     (735, 340), (812, 340), (889, 340),
     (735, 408), (812, 408), (889, 408),
 )
+# Tree health bar + label (bottom-left)
+TREE_HEALTH_BAR_POS = (40, 630)
+TREE_HEALTH_TEXT_POS = (44, 596)
+TREE_HEALTH_FONT_SIZE = 26
 
 rgb = tuple[int,int,int]
 num = random.randint(1, 5)
@@ -220,12 +281,14 @@ class Mob:
             self.randmob = random.randint(0, len(self.mobtype) - 1)
         self.health = self.mob_health_values[self.randmob]
         self.dmg = self.mob_dmg[self.randmob]
-        self.speed = MOB_SPEED_SCALE * MOB_SPEED[self.randmob]
+        self.speed = mob_pixel_speed(self.randmob, sprite_size)
+        self.design_speed = float(_MOBS_BY_INDEX[self.randmob]["speed"])
 
+        self._mob_frame_h = max(20, int(h * MOB_SPRITE_HEIGHT_RATIO))
         self.mobframes = [self.load_mob(frame) for frame in self.mobtype[self.randmob]]
 
         self.current_frame = 0
-        self.animaton_speed = 0.20
+        self.animaton_speed = mob_animation_speed(self.randmob)
         self.animation_counter = 0
         
         # Convert grid indices to isometric screen coordinates
@@ -243,28 +306,23 @@ class Mob:
         self.mobframes_left = [pygame.transform.flip(f, True, False) for f in self.mobframes_right]
     
     def load_mob(self, name):
-        # Try assets directory first, then fall back to old mobs directory
-        # Mob order: dragonfly, worm, butterfly, snail, beetle
-        mob_folders = ['dragonfly', 'worm', 'butterfly', 'snail', 'beetle']
+        # Mob folders: worm, butterfly, dragonfly, snail, beetle
+        mob_folders = ['worm', 'butterfly', 'dragonfly', 'snail', 'beetle']
         mob_folder = None
         for folder in mob_folders:
             if folder in name.lower():
                 mob_folder = folder
                 break
-        
+
+        img = None
         if mob_folder:
-            # Try assets/mobs directory first
             assets_path = os.path.join(ASSETS_MOBS_DIR, mob_folder, name)
-            if os.path.exists(assets_path):
-                return pygame.image.load(assets_path).convert_alpha()
-        
-        # Fallback to old mobs directory
-        path = os.path.join(MOBS_DIR, name)
-        if os.path.exists(path):
-            return pygame.image.load(path).convert_alpha()
-        
-        # If still not found, try assets/mobs with just the filename
-        return pygame.image.load(os.path.join(MOBS_DIR, name)).convert_alpha()
+            if os.path.isfile(assets_path):
+                img = pygame.image.load(assets_path).convert_alpha()
+        if img is None:
+            path = os.path.join(MOBS_DIR, name)
+            img = pygame.image.load(path).convert_alpha()
+        return _scale_surface_to_height(img, self._mob_frame_h)
 
     def update(self):
         if self.target_idx < len(self.waypoints):
@@ -407,6 +465,8 @@ class Game:
         self.last_wave = 0
         self.last_branches = -1
         self.last_active_mobs = -1
+        self._last_tree_health_display = (-1, -1, "")
+        self.cached_tree_health_label = None
         self.wave_deadline_ms = None
         self.last_timer_second = -1
         self.last_paths_remaining = -1        
@@ -512,14 +572,23 @@ class Game:
             background_raw = self.load_world(sky_name)
         except (pygame.error, FileNotFoundError):
             background_raw = self.load_world(fb_sky)
-        try:
-            island_raw = self.load_world(island_name)
-        except (pygame.error, FileNotFoundError):
-            island_raw = self.load_world(fb_island)
         self.cached_bg_image = self._scale_sky_to_display(background_raw)
-        self.cached_island_image = self._scale_island_to_display(island_raw)
+        self.cached_island_image = None
+        if island_name:
+            try:
+                island_raw = self.load_world(island_name)
+            except (pygame.error, FileNotFoundError):
+                if fb_island:
+                    island_raw = self.load_world(fb_island)
+                else:
+                    island_raw = None
+            if island_raw is not None:
+                self.cached_island_image = self._scale_island_to_display(island_raw)
         if hasattr(self, "cached_ui_by_stage") and stage in self.cached_ui_by_stage:
             self.cached_ui_image = self.cached_ui_by_stage[stage]
+        self._last_tree_health_display = (-1, -1, "")
+        if hasattr(self, "cached_font_health"):
+            self._refresh_tree_health_label(force=True)
         if stage == STAGE_CAVE:
             self.active_clouds = []
         elif stage == STAGE_SUNSHINE and hasattr(self, "cloud_images"):
@@ -743,9 +812,6 @@ class Game:
             # Scale it to a size that fits above your tree
             img = pygame.transform.scale(img, (int(img.get_width() * 0.7), int(img.get_height() * 0.7)))
             self.health_frames.append(img)
-            
-        self.tree_health_max = Maps.tree_health_for_wave(1)
-        self.tree_health = self.tree_health_max
 
     def _init_feel_audio(self) -> None:
         if self._feel_audio_ready:
@@ -858,12 +924,17 @@ class Game:
             )
 
     def _draw_mission_briefing(self) -> None:
+        cave = getattr(self, "current_stage", STAGE_CAVE) == STAGE_CAVE
         veil = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
-        veil.fill((8, 12, 28, 210))
+        veil.fill((12, 8, 6, 215) if cave else (8, 12, 28, 210))
         self.surface.blit(veil, (0, 0))
         title = self.cached_font_large.render("You are the infestation.", True, UI_BORDER_BROWN)
-        sub = self.cached_font_medium.render("Drain the Tree of Life. Be careful of where you step...", True, HUD_TEXT_BROWN_LIGHT)
-        c1 = self.cached_font_small.render("Build tiles spawn to the tree. SPACE starts a 30-second assault.", True, HUD_TEXT_BROWN_LIGHT)
+        sub = self.cached_font_medium.render(
+            "Drain the Tree of Life in the dark grove..." if cave else "Drain the Tree of Life. Be careful of where you step...",
+            True,
+            HUD_TEXT_BROWN_LIGHT,
+        )
+        c1 = self.cached_font_small.render("Build tiles toward the tree. SPACE starts a 30-second assault.", True, HUD_TEXT_BROWN_LIGHT)
         c2 = self.cached_font_small.render("Spend branches to buy bugs before time runs out.", True, HUD_TEXT_BROWN_LIGHT)
         c3 = self.cached_font_small.render("Kill the tree before the timer hits zero!", True, HUD_TEXT_BROWN_ACCENT)
         block_w = max(title.get_width(), sub.get_width(), c1.get_width(), c2.get_width(), c3.get_width()) + 48
@@ -871,7 +942,7 @@ class Game:
         bx = (self.width - block_w) // 2
         by = (self.height - block_h) // 2
         panel = pygame.Surface((block_w, block_h), pygame.SRCALPHA)
-        panel.fill((30, 40, 70, 230))
+        panel.fill((42, 32, 24, 235) if cave else (30, 40, 70, 230))
         pygame.draw.rect(panel, UI_BORDER_BROWN, panel.get_rect(), 2)
         self.surface.blit(panel, (bx, by))
         y = by + 20
@@ -929,9 +1000,9 @@ class Game:
             self._apply_stage_visuals(stage)
         self._refresh_ingame_settings_hitboxes()
         self.current_level_id = Maps.level_for_wave(self.wave)
-        self.reset_grid(self.current_level_id)
-        self.current_branches = Maps.branches_for_wave(self.wave)
-        self.tree_health_max = Maps.tree_health_for_wave(self.wave)
+        self.reset_grid(self.current_level_id, wave=self.wave)
+        self.current_branches = branches_for_wave(self.wave)
+        self.tree_health_max = tree_health_for_wave(self.wave)
         self.tree_health = self.tree_health_max
         self.mobs = []
         self.round_active = False
@@ -946,6 +1017,7 @@ class Game:
         if hasattr(self, 'cached_font_large'):
             self._refresh_wave_and_branch_hud()
             self._refresh_timer_hud(force=True)
+        self._last_tree_health_display = (-1, -1, "")
 
     def _tower_range_pixels(self, radius_tiles: float) -> float:
         w, h = self.spriteSize
@@ -1165,16 +1237,28 @@ class Game:
             
             # Cache mob icons for spawn boxes - order: worm, butterfly, dragonfly, snail, beetle
             mob_names = ['worm', 'butterfly', 'dragonfly', 'snail', 'beetle']
+            icon_box = MOB_GRID_SLOT_W - 12
             for i, mob_name in enumerate(mob_names):
                 try:
-                    mob_folder = os.path.join(ASSETS_MOBS_DIR, mob_name)
-                    if os.path.exists(mob_folder):
-                        mob_files = sorted([f for f in os.listdir(mob_folder) if f.endswith('.png') and 'flipped' not in f.lower()])
+                    mob_icon = None
+                    assets_folder = os.path.join(ASSETS_MOBS_DIR, mob_name)
+                    if os.path.isdir(assets_folder):
+                        mob_files = sorted(
+                            f for f in os.listdir(assets_folder)
+                            if f.endswith('.png') and 'flipped' not in f.lower()
+                        )
                         if mob_files:
-                            mob_icon = pygame.image.load(os.path.join(mob_folder, mob_files[0])).convert_alpha()
-                            # Scale to fit in box (woodbox is typically around 30x30)
-                            self.cached_mob_icons[i] = pygame.transform.scale(mob_icon, (25, 25))
-                except Exception as e:
+                            mob_icon = pygame.image.load(os.path.join(assets_folder, mob_files[0])).convert_alpha()
+                    if mob_icon is None and os.path.isdir(MOBS_DIR):
+                        mob_files = sorted(
+                            f for f in os.listdir(MOBS_DIR)
+                            if f.endswith('.png') and mob_name in f.lower() and 'flipped' not in f.lower()
+                        )
+                        if mob_files:
+                            mob_icon = pygame.image.load(os.path.join(MOBS_DIR, mob_files[0])).convert_alpha()
+                    if mob_icon is not None:
+                        self.cached_mob_icons[i] = _fit_surface_in_box(mob_icon, icon_box, icon_box)
+                except Exception:
                     pass
             
         except Exception as e:
@@ -1187,6 +1271,7 @@ class Game:
         self.cached_font_large = pygame.font.Font(font_path, 35)
         self.cached_font_medium = pygame.font.Font(font_path, 25)
         self.cached_font_small = pygame.font.Font(font_path, 20)
+        self.cached_font_health = pygame.font.Font(font_path, TREE_HEALTH_FONT_SIZE)
     
     def get_map_pivot(self) -> tuple[float, float]:
         return self.width / 3, 125 * 2.6
@@ -1361,6 +1446,7 @@ class Game:
         self.initiate_cached_fonts()  # Pre-load fonts
         self._refresh_wave_and_branch_hud()
         self._refresh_timer_hud(force=True)
+        self._refresh_tree_health_label(force=True)
         self.run_event_loop()
 
     def quit_app(self) -> None:
@@ -1950,28 +2036,45 @@ class Game:
         return None
 
     def get_health_frame(self):
+        max_hp = getattr(self, "tree_health_max", 1) or 1
         if self.tree_health <= 0:
             return self.health_frames[-1]
-        max_hp = getattr(self, "tree_health_max", 1) or 1
         pct = max(0.0, min(1.0, self.tree_health / float(max_hp)))
         n = len(self.health_frames)
         if n <= 1:
             return self.health_frames[0]
         idx = int((1.0 - pct) * (n - 1))
         return self.health_frames[min(max(0, idx), n - 1)]
-    
+
+    def _health_hud_text_color(self) -> tuple[int, int, int]:
+        if getattr(self, "current_stage", STAGE_SUNSHINE) == STAGE_CAVE:
+            return HUD_HEALTH_TEXT_CAVE
+        return HUD_HEALTH_TEXT_SUNSHINE
+
+    def _refresh_tree_health_label(self, *, force: bool = False) -> None:
+        max_hp = int(getattr(self, "tree_health_max", 1) or 1)
+        cur = int(max(0, self.tree_health))
+        stage = getattr(self, "current_stage", STAGE_SUNSHINE)
+        key = (cur, max_hp, stage)
+        if not force and key == getattr(self, "_last_tree_health_display", None):
+            return
+        self._last_tree_health_display = key
+        if not hasattr(self, "cached_font_health"):
+            return
+        self.cached_tree_health_label = self.cached_font_health.render(
+            f"Health: {cur} / {max_hp}",
+            True,
+            self._health_hud_text_color(),
+        )
+
     def draw_tree_of_life(self):
-        if self.tree_health > 0:
-            current_health_img = self.get_health_frame()
-            self.surface.blit(current_health_img, (40, 630))
-            if hasattr(self, "cached_font_small"):
-                hp_txt = self.cached_font_small.render(
-                    f"{int(self.tree_health)} / {int(getattr(self, 'tree_health_max', 1))}",
-                    True, HUD_TEXT_BROWN,
-                )
-                self.surface.blit(hp_txt, (44, 608))
-        else:
-            pass
+        if not getattr(self, "health_frames", None):
+            return
+        self._refresh_tree_health_label()
+        current_health_img = self.get_health_frame()
+        self.surface.blit(current_health_img, TREE_HEALTH_BAR_POS)
+        if self.cached_tree_health_label is not None:
+            self.surface.blit(self.cached_tree_health_label, TREE_HEALTH_TEXT_POS)
 
     def is_mob_unlocked(self, mob_index: int) -> bool:
         if 0 <= mob_index < len(MOB_UNLOCK_WAVES):
@@ -2134,9 +2237,9 @@ class Game:
             if getattr(self, "current_stage", STAGE_SUNSHINE) == STAGE_SUNSHINE:
                 self.update_and_draw_clouds()
             
-            if hasattr(self, 'cached_island_image'):
+            if getattr(self, "cached_island_image", None) is not None:
                 self.surface.blit(self.cached_island_image, (-100, 0))
-            else:
+            elif getattr(self, "current_stage", STAGE_SUNSHINE) == STAGE_SUNSHINE:
                 island_raw = self.load_world("island.png")
                 island_img = pygame.transform.scale(island_raw, (int(island_raw.get_width() * 1), int(island_raw.get_height() * 1.2)))
                 self.surface.blit(island_img, (-100, 0))
@@ -2327,15 +2430,15 @@ class Game:
 
         return len(visited) == len(all_path_coords)
     
-    def reset_grid(self, level_id: int | None = None):
+    def reset_grid(self, level_id: int | None = None, wave: int | None = None):
         if level_id is not None:
             self.current_level_id = level_id
         maps_data = Maps()
         self.world_grid = copy.deepcopy(maps_data.levels[self.current_level_id])
         self.sync_map_layout()
         self._rebuild_poison_bush_cells()
-        area_ratio = (self.grid_size / REFERENCE_GRID_SIZE) ** 2
-        self.paths_remaining = max(5, int(BASE_MAX_TILES * area_ratio))
+        w = wave if wave is not None else getattr(self, "wave", 1)
+        self.paths_remaining = tiles_for_wave(w)
         if pygame.display.get_surface() is not None:
             self.rebuild_map_scaled_assets()
 
@@ -2517,7 +2620,7 @@ class Game:
                             self._dev_skip_wave()
                         if event.key == pygame.K_r:
                             if not self.round_active:
-                                self.reset_grid()
+                                self.reset_grid(wave=self.wave)
                                 self.edit_mode = True
                                 self.round_active = False
                         if event.key == pygame.K_b:
