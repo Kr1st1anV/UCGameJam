@@ -87,17 +87,29 @@ beetle = {
     "speed": 2,
     "cost": 8,
 }
+<<<<<<< HEAD
 # Maximum Branchs and Maximum Tiles per level
 tiles  = [20, 20, 21, 21, 21, 21, 21, 21]
-branches = [6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30, 32, 34, 36, 38, 40, 42, 45]
+branches = [15, 23, 27, 34, 40, 48, 52, 59, 65, 72, 78, 87, 91, 98, 102, 106, 107, 108, 109, 111]
 treehealth = [18, 21, 25, 30, 36, 42, 48, 55, 63, 72, 82, 93, 105, 118, 132, 147, 163, 180, 198, 220]
 
 # Mob index: 0 spider (worm art), 1 butterfly, 2 dragonfly, 3 snail, 4 beetle
 MOB_HEALTH = [10, 20, 6, 45, 90]
-MOB_DAMAGE = [3, 6, 2, 10, 8]
-MOB_SPEED  = [2, 3, 5, 1, 2] # design speeds; scaled in Mob.__init__
+MOB_DAMAGE = [3, 6, 4, 10, 8]
+MOB_SPEED  = [2, 3, 6, 1, 2] # design speeds; scaled in Mob.__init__
 MOB_SPEED_SCALE = 0.42
-MOB_BRANCH_COSTS = [1, 4, 3, 6, 8]  # worm, butterfly, dragonfly, snail, beetle
+MOB_BRANCH_COSTS = [1, 2, 3, 4, 5]  # worm, butterfly, dragonfly, snail, beetle
+=======
+
+# Mob index: 0 worm, 1 butterfly, 2 dragonfly, 3 snail, 4 beetle
+_MOBS_BY_INDEX = (worm, butterfly, dragonfly, snail, beetle)
+MOB_HEALTH = [m["health"] for m in _MOBS_BY_INDEX]
+MOB_DAMAGE = [m["damage"] for m in _MOBS_BY_INDEX]
+MOB_SPEED = [m["speed"] for m in _MOBS_BY_INDEX]
+# Pixels/frame per design speed point, scaled to isometric cell size
+MOB_SPEED_CELL_FACTOR = 0.028
+MOB_BRANCH_COSTS = [m["cost"] for m in _MOBS_BY_INDEX]
+>>>>>>> 2046c0613717793974a1b5f4eec55eaae46e612d
 MOB_SPAWN_COOLDOWN_MS = 650
 MOB_SPRITE_HEIGHT_RATIO = 0.52  # mob frame height vs isometric tile height
 
