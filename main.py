@@ -29,7 +29,8 @@ MOB_HEALTH = [20, 50, 20, 100, 50]
 MOB_DAMAGE = [3, 7, 3, 40, 9]
 MOB_SPEED = [6, 3, 4, 1, 3]  # design speeds; scaled in Mob.__init__
 MOB_SPEED_SCALE = 0.42
-MOB_BRANCH_COSTS = [1, 8, 5, 10, 15]  # worm, butterfly, dragonfly, snail, beetle
+MOB_BRANCH_COSTS = [1, 5, 8, 10, 15]  # worm, butterfly, dragonfly, snail, beetle
+MOB_SPAWN_COOLDOWN_MS = 650
 
 # Towers: [range in grid tiles, damage, cooldown ms] — cooldown = 1000 / attack_speed
 TOWER_BEE = {"attack": 20, "attack_speed": 2, "range_tiles": 2}
@@ -251,6 +252,7 @@ class Game:
         # Branches buy mobs during the wave; quota caps how many can be deployed
         self.current_branches = 0
         self.mob_costs = list(MOB_BRANCH_COSTS)
+        self.mob_spawn_cooldown_until = {i: 0 for i in range(5)}
         self._tree_kill_handled = False
         
         # Which bug types appear each wave (unlocks over time)
@@ -472,7 +474,7 @@ class Game:
         sub = self.cached_font_medium.render("Drain the Tree of Life. Towers are not on your side.", True, (230, 230, 240))
         c1 = self.cached_font_small.render("Route tiles spawn → tree. SPACE starts a 30-second assault.", True, (200, 210, 255))
         c2 = self.cached_font_small.render("Spend branches to buy bugs before time runs out.", True, (200, 210, 255))
-        c3 = self.cached_font_small.render("N = next wave when the field is clear. Click to continue.", True, (255, 220, 120))
+        c3 = self.cached_font_small.render("Kill the tree before the timer hits zero — or you lose.", True, (255, 220, 120))
         block_w = max(title.get_width(), sub.get_width(), c1.get_width(), c2.get_width(), c3.get_width()) + 48
         block_h = title.get_height() + sub.get_height() + c1.get_height() + c2.get_height() + c3.get_height() + 50
         bx = (self.width - block_w) // 2
@@ -523,6 +525,7 @@ class Game:
         self.wave_deadline_ms = None
         self.last_timer_second = -1
         self._tree_kill_handled = False
+        self.mob_spawn_cooldown_until = {i: 0 for i in range(5)}
         if hasattr(self, 'cached_font_large'):
             self._refresh_wave_and_branch_hud()
 
@@ -593,8 +596,34 @@ class Game:
         if 'timer' in self.cached_text_surfaces:
             self.surface.blit(self.cached_text_surfaces['timer'], HUD_TIMER_POS)
 
+    def _mob_spawn_on_cooldown(self, mob_index: int) -> bool:
+        return pygame.time.get_ticks() < self.mob_spawn_cooldown_until.get(mob_index, 0)
+
+    def _mob_spawn_cooldown_remaining(self, mob_index: int) -> float:
+        """0.0 = ready, 1.0 = cooldown just started."""
+        until = self.mob_spawn_cooldown_until.get(mob_index, 0)
+        remaining_ms = until - pygame.time.get_ticks()
+        if remaining_ms <= 0:
+            return 0.0
+        return remaining_ms / float(MOB_SPAWN_COOLDOWN_MS)
+
+    def _start_mob_spawn_cooldown(self, mob_index: int) -> None:
+        self.mob_spawn_cooldown_until[mob_index] = pygame.time.get_ticks() + MOB_SPAWN_COOLDOWN_MS
+
+    def _draw_spawn_cooldown_overlay(self, x_pos: int, y_pos: int, box_w: int, box_h: int, mob_index: int) -> None:
+        """Semi-transparent square shrinking toward the bottom as cooldown ends."""
+        frac = self._mob_spawn_cooldown_remaining(mob_index)
+        if frac <= 0:
+            return
+        overlay_h = max(1, int(box_h * frac))
+        overlay = pygame.Surface((box_w, overlay_h), pygame.SRCALPHA)
+        overlay.fill((30, 35, 45, 155))
+        self.surface.blit(overlay, (x_pos, y_pos))
+
     def _spawn_mob_on_path(self, mob_index: int) -> bool:
         """Spawn one mob if the path is valid and the player can afford it."""
+        if self._mob_spawn_on_cooldown(mob_index):
+            return False
         if self.current_branches < self.mob_costs[mob_index]:
             return False
         pts = self.get_path_waypoints()
@@ -602,6 +631,7 @@ class Game:
             return False
         px, py = self.get_map_pivot()
         self.mobs.append(Mob(pts, self.spriteSize, px, py, mob_index))
+        self._start_mob_spawn_cooldown(mob_index)
         self._play_spawn_chirp()
         return True
 
@@ -613,28 +643,24 @@ class Game:
                 return True
         return False
 
-    def _dev_skip_wave(self) -> None:
-        """Hidden dev shortcut: jump to the next wave setup immediately."""
-        if self.showing_start_screen or self.showing_cutscene:
+    def _round_failed(self) -> None:
+        """Combat ended but the tree is still alive."""
+        if not self.round_active or not self.game_active or self.tree_health <= 0:
             return
         self.mobs = []
         self.round_active = False
-        self._end_round_advance_wave()
-
-    def _end_round_advance_wave(self) -> None:
-        self.round_active = False
         self.wave_deadline_ms = None
-        self.wave += 1
-        for mob in self.mobs:
-            mob.reset_animation()
-        for tower_key in self.tower_states:
-            self.tower_states[tower_key]["status"] = "idle"
-            self.tower_states[tower_key]["frame"] = 0
-        if self.wave > MAX_WAVES:
+        pygame.mouse.set_visible(True)
+        self.defeat()
+
+    def _dev_skip_wave(self) -> None:
+        """Hidden dev shortcut: treat the tree as destroyed for this wave."""
+        if self.showing_start_screen or self.showing_cutscene:
             return
-        self.begin_wave_setup()
-        if hasattr(self, 'cached_font_large'):
-            self._refresh_wave_and_branch_hud()
+        if not self.round_active and self.edit_mode:
+            return
+        self.tree_health = 0
+        self._on_tree_destroyed()
 
     def initiate_cached_images(self):
         """Pre-load and cache all background images to avoid loading every frame"""
@@ -1268,7 +1294,10 @@ class Game:
         if self.round_active and not self.edit_mode:
             spawn_button_rect = pygame.Rect(700, 650, 180, 45)
             self.ui_hitboxes['spawn_wave'] = spawn_button_rect
-            can_spawn = self.current_branches >= self.mob_costs[self.selected_mob_type]
+            can_spawn = (
+                self.current_branches >= self.mob_costs[self.selected_mob_type]
+                and not self._mob_spawn_on_cooldown(self.selected_mob_type)
+            )
             button_color = (0, 160, 0) if can_spawn else (100, 100, 100)
             pygame.draw.rect(self.surface, button_color, spawn_button_rect)
             pygame.draw.rect(self.surface, (255, 255, 255), spawn_button_rect, 2)
@@ -1364,6 +1393,10 @@ class Game:
                     # Draw highlight border
                     highlight_rect = pygame.Rect(x_pos, y_pos, self.cached_woodbox.get_width(), self.cached_woodbox.get_height())
                     pygame.draw.rect(self.surface, (255, 255, 0), highlight_rect, 3)
+
+                box_w = self.cached_woodbox.get_width()
+                box_h = self.cached_woodbox.get_height()
+                self._draw_spawn_cooldown_overlay(x_pos, y_pos, box_w, box_h, i)
     
     def ui_check_click(self, mouse_pos):
         if 'dev_skip_wave' in self.ui_hitboxes and self.ui_hitboxes['dev_skip_wave'].collidepoint(mouse_pos):
@@ -1407,12 +1440,15 @@ class Game:
         return None
 
     def get_health_frame(self):
+        if self.tree_health <= 0:
+            return self.health_frames[-1]
         max_hp = getattr(self, "tree_health_max", 1) or 1
-        pct = 100.0 * max(0, self.tree_health) / float(max_hp)
-        for i, step in enumerate(self.health_steps):
-            if pct >= step:
-                return self.health_frames[i]
-        return self.health_frames[-1]
+        pct = max(0.0, min(1.0, self.tree_health / float(max_hp)))
+        n = len(self.health_frames)
+        if n <= 1:
+            return self.health_frames[0]
+        idx = int((1.0 - pct) * (n - 1))
+        return self.health_frames[min(max(0, idx), n - 1)]
     
     def draw_mob_purchase_ui(self):
         """Draw mob purchase squares on the right side of the screen"""
@@ -1935,6 +1971,7 @@ class Game:
                                     if (
                                         mob_index in available_mobs
                                         and self.current_branches >= self.mob_costs[mob_index]
+                                        and not self._mob_spawn_on_cooldown(mob_index)
                                     ):
                                         self.selected_mob_type = mob_index
                                         cost = self.mob_costs[mob_index]
@@ -1958,6 +1995,7 @@ class Game:
                                     if (
                                         self.selected_mob_type in available_mobs
                                         and self.current_branches >= self.mob_costs[self.selected_mob_type]
+                                        and not self._mob_spawn_on_cooldown(self.selected_mob_type)
                                     ):
                                         cost = self.mob_costs[self.selected_mob_type]
                                         if self._spawn_mob_on_path(self.selected_mob_type):
@@ -1987,9 +2025,6 @@ class Game:
                             self.set_path = False
                             self.rm_path = False
                     elif event.type == pygame.KEYDOWN:
-                        if event.key == pygame.K_n:
-                            if self.round_active and not self.edit_mode and len(self.mobs) == 0:
-                                self._end_round_advance_wave()
                         if event.key == pygame.K_F9:
                             self._dev_skip_wave()
                         if event.key == pygame.K_r:
@@ -2022,6 +2057,7 @@ class Game:
                                 if (
                                     self.selected_mob_type in available_mobs
                                     and self.current_branches >= self.mob_costs[self.selected_mob_type]
+                                    and not self._mob_spawn_on_cooldown(self.selected_mob_type)
                                 ):
                                     cost = self.mob_costs[self.selected_mob_type]
                                     if self._spawn_mob_on_path(self.selected_mob_type):
@@ -2039,21 +2075,15 @@ class Game:
                 if self.game_active:
                     self.defeat()
             
-            # Timed wave: 30 seconds of combat then advance (or early end if spent out)
+            # Timed wave: must kill the tree before time runs out
             if (
                 self.round_active
                 and not self.edit_mode
                 and self.wave_deadline_ms is not None
                 and pygame.time.get_ticks() >= self.wave_deadline_ms
+                and self.tree_health > 0
             ):
-                self.mobs = []
-                self._end_round_advance_wave()
-            elif (
-                self.round_active
-                and len(self.mobs) == 0
-                and not self._can_player_spawn_anything()
-            ):
-                self._end_round_advance_wave()
+                self._round_failed()
 
             self.draw_window()
             if self.showing_start_screen:

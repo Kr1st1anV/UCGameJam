@@ -281,5 +281,6 @@ class Maps:
 
     @staticmethod
     def tree_health_for_wave(wave: int) -> int:
-        """Tree starts each wave at this HP (grows each wave)."""
-        return 180 + wave * 125
+        """HP scaled to branch budget so a full assault can kill the tree in one round."""
+        branches = Maps.branches_for_wave(wave)
+        return max(16, int(branches * 2.4))
