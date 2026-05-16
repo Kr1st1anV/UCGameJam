@@ -110,7 +110,22 @@ MOB_GRID_ROWS = 2
 MOB_GRID_SLOT_W = 56
 MOB_GRID_SLOT_H = 56
 SCRIPT_OF_EVIL_PAGE_COUNT = 5  # worm → beetle scroll pages
-SFX_VOLUME_MAX = 11
+SFX_VOLUME_MAX = 10
+DEBUG_UI_OUTLINES = False
+OBSTACLE_SEE_THROUGH_ALPHA = 0
+TOWER_HOVER_ALPHA = 100
+UI_BORDER_BROWN = (255, 200, 80)
+HUD_TEXT_BROWN = (85, 58, 28)
+HUD_TEXT_BROWN_DARK = (58, 40, 18)
+HUD_TEXT_BROWN_LIGHT = (120, 85, 45)
+HUD_TEXT_BROWN_ACCENT = (200, 145, 55)
+# Temporary poison VFX until dedicated UI (grid -8 = bush)
+POISON_OUTLINE_COLOR = (40, 220, 70)
+POISON_OUTLINE_WIDTH = 3
+# Surrender popup (coords relative to scaled surrenderpage blit top-left, scale 0.8)
+SURRENDER_HITBACK = pygame.Rect(69, 67, 21, 22)
+SURRENDER_HIT_NO = pygame.Rect(125, 200, 80, 58)
+SURRENDER_HIT_YES = pygame.Rect(330, 200, 100, 58)
 # Slot center (x, y) per cell, row-major — tweak Y to move the whole grid up/down
 MOB_GRID_CENTERS = (
     (735, 340), (812, 340), (889, 340),
@@ -175,6 +190,7 @@ class Mob:
         self.pos = pygame.Vector2(self.waypoints[0]) if self.waypoints else pygame.Vector2(0,0)
         self.target_idx = 1
         self.at_end = False
+        self.poisoned = False
 
         self.mobframes_right = [self.load_mob(f) for f in self.mobtype[self.randmob]]
         self.mobframes_left = [pygame.transform.flip(f, True, False) for f in self.mobframes_right]
@@ -245,6 +261,13 @@ class Mob:
         # Offset mob slightly downward to align with shadows
         sprite_rect = current_sprite.get_rect(center=(self.pos.x, self.pos.y + 8))
         surface.blit(current_sprite, sprite_rect)
+        if self.poisoned:
+            pygame.draw.rect(
+                surface,
+                POISON_OUTLINE_COLOR,
+                sprite_rect.inflate(8, 8),
+                POISON_OUTLINE_WIDTH,
+            )
 
         if self.health > 0:
             bar_width = 40
@@ -283,8 +306,8 @@ class Game:
 
         # Presentation / juice (hackathon polish)
         self.mission_briefing_active = False
+        self.see_through_obstacles = False
         self._floating_text = []  # {text, x, y, vy, life, color}
-        self._screen_shake_remaining = 0
         self._last_tower_sound_ms = 0
         self._feel_audio_ready = False
         self.sfx_volume_level = SFX_VOLUME_MAX
@@ -313,6 +336,7 @@ class Game:
         self.mob_costs = list(MOB_BRANCH_COSTS)
         self.mob_spawn_cooldown_until = {i: 0 for i in range(5)}
         self._tree_kill_handled = False
+        self.poison_bush_cells: set[tuple[int, int]] = set()
         
         self.wave = 1
         self.begin_wave_setup()
@@ -415,6 +439,22 @@ class Game:
             pygame.mouse.set_visible(True)
             # Load defeat cutscene and return to main menu when finished
             self.load_cutscene('defeat', return_to_start=True)
+
+    def return_to_main_menu(self) -> None:
+        """Return to the start screen without playing a cutscene."""
+        pygame.mouse.set_visible(True)
+        self.showing_cutscene = False
+        self.showing_surrender = False
+        self.showing_scroll = False
+        self.showing_book = False
+        self.mission_briefing_active = False
+        self.showing_settings_screen = False
+        self.showing_instructions_scene = False
+        self.game_active = True
+        self.showing_start_screen = True
+        self.wave = 1
+        self.begin_wave_setup()
+        self.tower_states = {}
     
     def initiate_tree_health_bars(self):
         self.health_frames = []
@@ -529,7 +569,6 @@ class Game:
         if not finished_mobs:
             return
         self._play_tree_damage()
-        self._screen_shake_remaining = min(22, self._screen_shake_remaining + 9)
         cx, cy = self._tree_of_life_float_pos()
         for i, mob in enumerate(finished_mobs):
             dmg = int(mob.dmg)
@@ -546,28 +585,28 @@ class Game:
         veil = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
         veil.fill((8, 12, 28, 210))
         self.surface.blit(veil, (0, 0))
-        title = self.cached_font_large.render("You are the infestation.", True, (255, 245, 200))
-        sub = self.cached_font_medium.render("Drain the Tree of Life. Towers are not on your side.", True, (230, 230, 240))
-        c1 = self.cached_font_small.render("Route tiles spawn → tree. SPACE starts a 30-second assault.", True, (200, 210, 255))
-        c2 = self.cached_font_small.render("Spend branches to buy bugs before time runs out.", True, (200, 210, 255))
-        c3 = self.cached_font_small.render("Kill the tree before the timer hits zero — or you lose.", True, (255, 220, 120))
+        title = self.cached_font_large.render("You are the infestation.", True, UI_BORDER_BROWN)
+        sub = self.cached_font_medium.render("Drain the Tree of Life. Be careful of where you step...", True, HUD_TEXT_BROWN_LIGHT)
+        c1 = self.cached_font_small.render("Build tiles spawn to the tree. SPACE starts a 30-second assault.", True, HUD_TEXT_BROWN_LIGHT)
+        c2 = self.cached_font_small.render("Spend branches to buy bugs before time runs out.", True, HUD_TEXT_BROWN_LIGHT)
+        c3 = self.cached_font_small.render("Kill the tree before the timer hits zero!", True, HUD_TEXT_BROWN_ACCENT)
         block_w = max(title.get_width(), sub.get_width(), c1.get_width(), c2.get_width(), c3.get_width()) + 48
-        block_h = title.get_height() + sub.get_height() + c1.get_height() + c2.get_height() + c3.get_height() + 50
+        block_h = title.get_height() + sub.get_height() + c1.get_height() + c2.get_height() + c3.get_height() + 70
         bx = (self.width - block_w) // 2
         by = (self.height - block_h) // 2
         panel = pygame.Surface((block_w, block_h), pygame.SRCALPHA)
         panel.fill((30, 40, 70, 230))
-        pygame.draw.rect(panel, (255, 200, 80), panel.get_rect(), 2)
+        pygame.draw.rect(panel, UI_BORDER_BROWN, panel.get_rect(), 2)
         self.surface.blit(panel, (bx, by))
         y = by + 20
         self.surface.blit(title, (bx + 24, y))
         y += title.get_height() + 8
         self.surface.blit(sub, (bx + 24, y))
-        y += sub.get_height() + 16
+        y += sub.get_height() + 8
         self.surface.blit(c1, (bx + 24, y))
         y += c1.get_height() + 6
         self.surface.blit(c2, (bx + 24, y))
-        y += c2.get_height() + 18
+        y += c2.get_height() + 8
         self.surface.blit(c3, (bx + 24, y))
 
     def get_available_mobs_for_wave(self) -> list[int]:
@@ -599,10 +638,10 @@ class Game:
         """Keep wave + branch labels in sync when a new wave starts or branches change."""
         roman = self.intToRoman(self.wave)
         self.cached_text_surfaces['wave'] = self.cached_font_large.render(
-            "Wave: " + roman, True, (0, 0, 0)
+            "Wave: " + roman, True, HUD_TEXT_BROWN_DARK
         )
         self.cached_text_surfaces['branches'] = self.cached_font_large.render(
-            f": {self.current_branches}", True, (0, 0, 0)
+            f": {self.current_branches}", True, HUD_TEXT_BROWN
         )
         self.last_wave = self.wave
         self.last_branches = self.current_branches
@@ -691,9 +730,10 @@ class Game:
             and not self.edit_mode
             and self.wave_deadline_ms is not None
         )
-        color = (200, 40, 30) if in_combat and sec <= 10 else (30, 50, 30)
+        color = HUD_TEXT_BROWN_ACCENT if in_combat and sec <= 10 else HUD_TEXT_BROWN
+        unit = "sec"
         self.cached_text_surfaces['timer'] = self.cached_font_large.render(
-            str(sec), True, color
+            f"{sec} {unit}", True, color
         )
         self.last_timer_second = sec
 
@@ -899,6 +939,72 @@ class Game:
     def get_map_pivot(self) -> tuple[float, float]:
         return self.width / 3, 125 * 2.6
 
+    def _game_input_locked(self) -> bool:
+        """True while intro overlay is up — no map/UI interaction."""
+        return self.mission_briefing_active
+
+    def _path_edit_locked(self) -> bool:
+        """True while overlays block hammer/shovel path editing."""
+        return (
+            self._game_input_locked()
+            or self.showing_scroll
+            or self.showing_book
+            or self.showing_surrender
+        )
+
+    def _clear_path_editing(self) -> None:
+        self.set_path = False
+        self.rm_path = False
+        self.hammer_animating = False
+
+    def _is_v_path_tile(self, tile_val) -> bool:
+        """Walkable path tiles (not towers or bushes)."""
+        return tile_val in (1, -1)
+
+    def _is_v_bush_tile(self, tile_val) -> bool:
+        return tile_val == -8
+
+    def _obstacle_draw_alpha(self, tile_val, i: int, j: int) -> int:
+        """Hold V: hide towers/trees (alpha 0). Hover still dims one tower type."""
+        if self.see_through_obstacles:
+            if tile_val in ("b2", "l1", -9):
+                return OBSTACLE_SEE_THROUGH_ALPHA
+            return 255
+        if tile_val == self.hovered_tower_type:
+            return TOWER_HOVER_ALPHA
+        return 255
+
+    def _world_to_grid(self, world_x: float, world_y: float) -> tuple[int, int]:
+        pivot_x, pivot_y = self.get_map_pivot()
+        w, h = self.spriteSize
+        half_w, half_h = w / 2, h / 4
+        rel_x, rel_y = world_x - pivot_x, world_y - pivot_y
+        grid_j = (rel_x / half_w + rel_y / half_h) / 2
+        grid_i = (rel_y / half_h - rel_x / half_w) / 2
+        return int(np.floor(grid_i)), int(np.floor(grid_j))
+
+    def _rebuild_poison_bush_cells(self) -> None:
+        """Bush tiles (-8) and path placed on them stay poison sources."""
+        cells: set[tuple[int, int]] = set()
+        for i in range(self.grid_rows):
+            for j in range(self.grid_cols):
+                if self.world_grid[i][j] == -8:
+                    cells.add((i, j))
+        for ij in self.poison_bush_cells:
+            i, j = ij
+            if 0 <= i < self.grid_rows and 0 <= j < self.grid_cols:
+                if self.world_grid[i][j] == 1:
+                    cells.add(ij)
+        self.poison_bush_cells = cells
+
+    def _update_mob_poison_status(self) -> None:
+        for mob in self.mobs:
+            if mob.at_end or mob.health <= 0:
+                continue
+            gi, gj = self._world_to_grid(mob.pos.x, mob.pos.y)
+            if (gi, gj) in self.poison_bush_cells:
+                mob.poisoned = True
+
     def sync_map_layout(self) -> None:
         """Match loop bounds and tile scale to the active Maps.py level size."""
         self.grid_rows, self.grid_cols = Maps.grid_dimensions(self.world_grid)
@@ -1031,7 +1137,9 @@ class Game:
 
         grid_i, grid_j = int(np.floor(mouse_i)), int(np.floor(mouse_j))
 
-        self.hovered_tower_type = None 
+        self.hovered_tower_type = None
+        if self._game_input_locked():
+            grid_i, grid_j = -1, -1
 
         for i in range(self.grid_rows):
             for j in range(self.grid_cols):
@@ -1041,31 +1149,44 @@ class Game:
 
                 # Hover effect
                 # For Towers
-                is_hovered = (i == grid_i and j == grid_j)
+                is_hovered = (i == grid_i and j == grid_j) and not self._game_input_locked()
                 if is_hovered:
                     tile_value = self.world_grid[i][j]
                     if tile_value in [-9, -8, "b2", "l1"]:
                         self.hovered_tower_type = tile_value
                 
-                # Handle path editing
-                if self.edit_mode and type(self.world_grid[i][j]) == int and self.world_grid[i][j] >= 0 and is_hovered:
+                # Handle path editing (grass, path, and bush -8)
+                tile_int = self.world_grid[i][j]
+                can_edit_path = (
+                    self.edit_mode
+                    and not self._path_edit_locked()
+                    and is_hovered
+                    and (
+                        (type(tile_int) == int and tile_int >= 0)
+                        or tile_int == -8
+                    )
+                )
+                if can_edit_path:
                     self.highlight = True
                     if self.set_path and self.paths_remaining > 0:
-                        if  self.world_grid[i][j] != 1:
+                        if tile_int != 1:
+                            if tile_int == -8:
+                                self.poison_bush_cells.add((i, j))
                             self.world_grid[i][j] = 1
                             self.paths_remaining -= 1
-                            # Trigger hammer animation when tile changes
                             self.tile_changed = True
                             self.hammer_animating = True
-                            self.hammer_animation_duration = 0.5  # Animation duration in seconds
+                            self.hammer_animation_duration = 0.5
                     elif self.rm_path:
-                        if  self.world_grid[i][j] != 0:
-                            self.world_grid[i][j] = 0
+                        if tile_int == 1:
+                            if (i, j) in self.poison_bush_cells:
+                                self.world_grid[i][j] = -8
+                            else:
+                                self.world_grid[i][j] = 0
                             self.paths_remaining += 1
-                            # Trigger hammer animation when tile changes
                             self.tile_changed = True
                             self.hammer_animating = True
-                            self.hammer_animation_duration = 0.5  # Animation duration in seconds
+                            self.hammer_animation_duration = 0.5
                 else:
                     self.highlight = False
                 
@@ -1073,23 +1194,26 @@ class Game:
                 # When B is pressed (build = False, delete mode): highlight path tiles on hover
                 # When B is not pressed (build = True, build mode): highlight grass tiles on hover
                 if self.world_grid[i][j] == 0:
-                    # Grass tile - highlight on hover if in build mode (B not pressed)
-                    if is_hovered and self.build:
-                        self.surface.blit(self.h_tiles["dark_grass"], (draw_x, draw_y)) # Highlighted Grass
+                    if self.see_through_obstacles:
+                        self.surface.blit(self.h_tiles["dark_grass"], (draw_x, draw_y))
+                    elif is_hovered and self.build and not self._path_edit_locked():
+                        self.surface.blit(self.h_tiles["dark_grass"], (draw_x, draw_y))
                     else:
-                        self.surface.blit(self.tiles["dark_grass"], (draw_x, draw_y)) # Normal Grass
+                        self.surface.blit(self.tiles["dark_grass"], (draw_x, draw_y))
                 elif self.world_grid[i][j] == 1:
-                    # Path tile - highlight on hover if in delete mode (B pressed)
                     sprite = self.get_path_sprite(i, j)
-                    if is_hovered and not self.build:
-                        # Highlight path tiles when hovered in delete mode
-                        highlighted_sprite = self.highlight_block(sprite)
-                        self.surface.blit(highlighted_sprite, (draw_x, draw_y))
+                    if self.see_through_obstacles and self._is_v_path_tile(1):
+                        self.surface.blit(self.highlight_block(sprite), (draw_x, draw_y))
+                    elif is_hovered and not self.build and not self._path_edit_locked():
+                        self.surface.blit(self.highlight_block(sprite), (draw_x, draw_y))
                     else:
                         self.surface.blit(sprite, (draw_x, draw_y))
                 elif self.world_grid[i][j] == -1:
                     sprite = self.get_spawn_sprite(i, j)
-                    self.surface.blit(sprite, (draw_x, draw_y))
+                    if self.see_through_obstacles and self._is_v_path_tile(-1):
+                        self.surface.blit(self.highlight_block(sprite), (draw_x, draw_y))
+                    else:
+                        self.surface.blit(sprite, (draw_x, draw_y))
                     valid_path = self.is_grid_valid(self.world_grid)
                     if valid_path:
                         #Show a Space bar - Start Round
@@ -1104,7 +1228,14 @@ class Game:
                 elif self.world_grid[i][j] == -9:
                     self.surface.blit(self.tiles["red"], (draw_x, draw_y)) # Tree
                 elif self.world_grid[i][j] == -8:
-                    self.surface.blit(self.tiles["dark_grass"], (draw_x, draw_y)) # Tree
+                    if (
+                        self.see_through_obstacles and self._is_v_bush_tile(-8)
+                    ) or (
+                        is_hovered and self.build and not self._path_edit_locked()
+                    ):
+                        self.surface.blit(self.h_tiles["dark_grass"], (draw_x, draw_y))
+                    else:
+                        self.surface.blit(self.tiles["dark_grass"], (draw_x, draw_y))
 
     def find_all_ends(self):
         """Find all -1 positions (start and end points)"""
@@ -1343,18 +1474,22 @@ class Game:
                             self.tower_states[tower_key]["status"] = "attack"
                             self.tower_states[tower_key]["frame"] = 0
 
-    def draw_UI(self) -> None: 
-        # Show surrender screen if active
-        if self.showing_surrender:
-            if hasattr(self, 'cached_surrender_page'):
-                # Center the surrender page on screen
-                surrender_x = (self.width - self.cached_surrender_page.get_width()) // 2
-                surrender_y = (self.height - self.cached_surrender_page.get_height()) // 2
-                self.surface.blit(self.cached_surrender_page, (surrender_x, surrender_y))
-                # Add close button hitbox (you may need to adjust this based on the surrender page design)
-                self.ui_hitboxes['surrender_close'] = pygame.Rect(surrender_x + 200, surrender_y + 300, 100, 50)
-        
-        # Use cached images instead of loading every frame
+    def _draw_ui_debug_outlines(self) -> None:
+        if not DEBUG_UI_OUTLINES:
+            return
+        for rect in self.ui_hitboxes.values():
+            pygame.draw.rect(self.surface, (255, 0, 0), rect, 2)
+
+    def _surrender_panel_pos(self) -> tuple[int, int]:
+        if not hasattr(self, 'cached_surrender_page'):
+            return (0, 0)
+        x = (self.width - self.cached_surrender_page.get_width()) // 2
+        y = (self.height - self.cached_surrender_page.get_height()) // 2
+        return x, y
+
+    def draw_UI(self) -> None:
+        self.ui_hitboxes = {}
+
         if self.showing_scroll:
             # Show the scroll for the current page (script of evil navigation)
             if self.scroll_page in self.cached_scrolls:
@@ -1387,10 +1522,8 @@ class Game:
         # Calculated: x=701, y=554, width=224, height=61
         self.ui_hitboxes['book_of_life'] = pygame.Rect(701, 554, 224, 61)
         
-        # Settings button - coordinates from user clicks
-        # Top-left: (849, 692), Bottom-right: (945, 709)
-        # Calculated: x=849, y=692, width=96, height=17
-        self.ui_hitboxes['settings'] = pygame.Rect(849, 692, 96, 17)
+        # Settings button (slightly larger than baked UI label for easier clicks)
+        self.ui_hitboxes['settings'] = pygame.Rect(835, 685, 120, 35)
 
         # Dev-only: unlabeled skip control (top-left corner, no in-game label)
         dev_skip_rect = pygame.Rect(6, 6, 16, 16)
@@ -1422,29 +1555,44 @@ class Game:
 
         if self.last_paths_remaining != self.paths_remaining:
             self.cached_text_surfaces['tiles'] = self.cached_font_medium.render(
-                f'Tiles: {self.paths_remaining}', True, (0, 0, 0)
+                f'Tiles: {self.paths_remaining}', True, HUD_TEXT_BROWN_DARK
             )
             self.last_paths_remaining = self.paths_remaining
         elif 'tiles' not in self.cached_text_surfaces:
             self.cached_text_surfaces['tiles'] = self.cached_font_medium.render(
-                f'Tiles: {self.paths_remaining}', True, (0, 0, 0)
+                f'Tiles: {self.paths_remaining}', True, HUD_TEXT_BROWN_DARK
             )
 
         active = len(self.mobs)
         if self.last_active_mobs != active:
             self.cached_text_surfaces['units'] = self.cached_font_large.render(
-                f'On field: {active}', True, (0, 0, 0)
+                f'On field: {active}', True, HUD_TEXT_BROWN
             )
             self.last_active_mobs = active
         elif 'units' not in self.cached_text_surfaces:
             self.cached_text_surfaces['units'] = self.cached_font_large.render(
-                f'On field: {active}', True, (0, 0, 0)
+                f'On field: {active}', True, HUD_TEXT_BROWN
             )
 
         self.surface.blit(self.cached_text_surfaces['wave'], HUD_WAVE_POS)
         self.surface.blit(self.cached_text_surfaces['tiles'], HUD_TILES_POS)
         self._draw_hud_branch_and_timer()
         self.surface.blit(self.cached_text_surfaces['units'], (1130, 550))
+
+        if self.showing_surrender and hasattr(self, 'cached_surrender_page'):
+            surrender_x, surrender_y = self._surrender_panel_pos()
+            self.surface.blit(self.cached_surrender_page, (surrender_x, surrender_y))
+            self.ui_hitboxes['surrender_back'] = SURRENDER_HITBACK.move(
+                surrender_x, surrender_y
+            ).inflate(16, 14)
+            self.ui_hitboxes['surrender_no'] = SURRENDER_HIT_NO.move(
+                surrender_x, surrender_y
+            )
+            self.ui_hitboxes['surrender_yes'] = SURRENDER_HIT_YES.move(
+                surrender_x, surrender_y
+            )
+
+        self._draw_ui_debug_outlines()
 
         
         # self.settings = self.load_world('settings.png')
@@ -1491,7 +1639,7 @@ class Game:
                     )
                 else:
                     lock_txt = self.cached_font_small.render(
-                        f"W{self.get_unlock_wave(mob_index)}", True, (90, 90, 90)
+                        f"W{self.get_unlock_wave(mob_index)}", True, HUD_TEXT_BROWN_LIGHT
                     )
                     self.surface.blit(lock_txt, lock_txt.get_rect(center=slot_rect.center))
                     self._draw_mob_slot_frame(slot_rect, selected=False)
@@ -1499,24 +1647,30 @@ class Game:
                 self._draw_mob_slot_frame(slot_rect, selected=False)
     
     def ui_check_click(self, mouse_pos):
+        if self.showing_surrender:
+            if 'surrender_back' in self.ui_hitboxes and self.ui_hitboxes['surrender_back'].collidepoint(mouse_pos):
+                return "SURRENDER_BACK"
+            if 'surrender_no' in self.ui_hitboxes and self.ui_hitboxes['surrender_no'].collidepoint(mouse_pos):
+                return "SURRENDER_NO"
+            if 'surrender_yes' in self.ui_hitboxes and self.ui_hitboxes['surrender_yes'].collidepoint(mouse_pos):
+                return "SURRENDER_YES"
+            return None
+
         if 'dev_skip_wave' in self.ui_hitboxes and self.ui_hitboxes['dev_skip_wave'].collidepoint(mouse_pos):
             return "DEV_SKIP_WAVE"
 
-        # Check surrender close button
-        if self.showing_surrender and 'surrender_close' in self.ui_hitboxes and self.ui_hitboxes['surrender_close'].collidepoint(mouse_pos):
-            return "SURRENDER_CLOSE"
-        
         # Check spawn box clicks (2×3 mob grid)
         for i in range(5):  # 5 mob types
             box_key = f'spawn_box_{i}'
             if box_key in self.ui_hitboxes and self.ui_hitboxes[box_key].collidepoint(mouse_pos):
                 return f"SPAWN_BOX_{i}"
         
-        # Check scroll page navigation
-        if 'scroll_left' in self.ui_hitboxes and self.ui_hitboxes['scroll_left'].collidepoint(mouse_pos):
-            return "SCROLL_LEFT"
-        if 'scroll_right' in self.ui_hitboxes and self.ui_hitboxes['scroll_right'].collidepoint(mouse_pos):
-            return "SCROLL_RIGHT"
+        # Check scroll page navigation (only while script of evil is open)
+        if self.showing_scroll:
+            if 'scroll_left' in self.ui_hitboxes and self.ui_hitboxes['scroll_left'].collidepoint(mouse_pos):
+                return "SCROLL_LEFT"
+            if 'scroll_right' in self.ui_hitboxes and self.ui_hitboxes['scroll_right'].collidepoint(mouse_pos):
+                return "SCROLL_RIGHT"
         
         # Check settings button
         if 'settings' in self.ui_hitboxes and self.ui_hitboxes['settings'].collidepoint(mouse_pos):
@@ -1551,7 +1705,7 @@ class Game:
             if hasattr(self, "cached_font_small"):
                 hp_txt = self.cached_font_small.render(
                     f"{int(self.tree_health)} / {int(getattr(self, 'tree_health_max', 1))}",
-                    True, (28, 55, 22),
+                    True, HUD_TEXT_BROWN,
                 )
                 self.surface.blit(hp_txt, (44, 608))
         else:
@@ -1607,13 +1761,7 @@ class Game:
                     if len(frames) > 0:
                         surf = frames[int(state_info["frame"]) % len(frames)].copy()
                         
-                        # --- GLOBAL HIGHLIGHT LOGIC ---
-                        # If this tower type is the one we are hovering over, dim ALL of them
-                        if tile_val == self.hovered_tower_type:
-                            surf.set_alpha(100) # Highlighted look
-                        else:
-                            surf.set_alpha(255) # Normal look
-                        # ------------------------------
+                        surf.set_alpha(self._obstacle_draw_alpha(tile_val, i, j))
 
                         if state_info["flip"]:
                             surf = pygame.transform.flip(surf, True, False)
@@ -1624,7 +1772,10 @@ class Game:
                             'surf': surf, 
                             'pos': (draw_x, (draw_y - h * 1.2) + bobbing_offset)
                         })
-                if tile_val in [-8, -9]:
+                is_bush = tile_val == -8 or (
+                    tile_val == 1 and (i, j) in self.poison_bush_cells
+                )
+                if tile_val == -9 or is_bush:
                     draw_x = pivot_x + (j - i) * half_w - half_w
                     draw_y = pivot_y + (j + i) * half_h
                     
@@ -1639,13 +1790,8 @@ class Game:
                         if tile_val == -9:
                             surf = pygame.transform.scale(surf,(int(surf.get_width() * 2), int(surf.get_height() * 2)))
                         
-                        # --- GLOBAL HIGHLIGHT LOGIC ---
-                        # If this tower type is the one we are hovering over, dim ALL of them
-                        if tile_val == self.hovered_tower_type:
-                            surf.set_alpha(100) # Highlighted look
-                        else:
-                            surf.set_alpha(255) # Normal look
-                        # ------------------------------
+                        bush_tile = -8 if is_bush else tile_val
+                        surf.set_alpha(self._obstacle_draw_alpha(bush_tile, i, j))
 
                         if state_info["flip"]:
                             surf = pygame.transform.flip(surf, True, False)
@@ -1773,6 +1919,7 @@ class Game:
                 
                 self.mobs = [m for m in self.mobs if not m.at_end]
                 
+                self._update_mob_poison_status()
                 for mob in self.mobs:
                     mob.update()
                     layer_queue.append({
@@ -1816,7 +1963,7 @@ class Game:
             self.draw_UI()
             
             # Draw cursor icon (hammer for build mode, shovel for delete mode)
-            if self.edit_mode:
+            if self.edit_mode and not self._game_input_locked():
                 # Hide default cursor in edit mode
                 pygame.mouse.set_visible(False)
                 
@@ -1846,17 +1993,9 @@ class Game:
                     # Show shovel when deleting paths
                     self.surface.blit(self.shovel_image, (self.x - self.shovel_image.get_width() // 2, self.y - self.shovel_image.get_height() // 2))
             else:
-                # Show default cursor when not in edit mode
                 pygame.mouse.set_visible(True)
             
             self._draw_floating_text()
-            if self._screen_shake_remaining > 0 and not self.mission_briefing_active:
-                snapshot = self.surface.copy()
-                self.surface.fill(self.bgcolor)
-                ox = random.randint(-6, 6)
-                oy = random.randint(-6, 6)
-                self.surface.blit(snapshot, (ox, oy))
-                self._screen_shake_remaining -= 1
             if self.mission_briefing_active:
                 self._draw_mission_briefing()
             
@@ -1920,6 +2059,7 @@ class Game:
         maps_data = Maps()
         self.world_grid = copy.deepcopy(maps_data.levels[self.current_level_id])
         self.sync_map_layout()
+        self._rebuild_poison_bush_cells()
         area_ratio = (self.grid_size / REFERENCE_GRID_SIZE) ** 2
         self.paths_remaining = max(5, int(BASE_MAX_TILES * area_ratio))
         if pygame.display.get_surface() is not None:
@@ -1966,8 +2106,8 @@ class Game:
                                 # Start the game normally
                                 self.showing_start_screen = False
                                 self.mission_briefing_active = True
-                            if action == "TUTORIAL":
-                                self.showing_instructions_scene = True
+                                self._clear_path_editing()
+                                self.see_through_obstacles = False
                             if action == "SETTINGS":
                                 self.showing_settings_screen = True
                         elif self.showing_instructions_scene:
@@ -1994,14 +2134,7 @@ class Game:
                         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                             self.mission_briefing_active = False
                             continue
-                        if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                            self.mission_briefing_active = False
-                            continue
-                        if event.type == pygame.KEYDOWN and event.key in (pygame.K_SPACE, pygame.K_RETURN):
-                            self.mission_briefing_active = False
-                            # Same keypress must still reach KEYDOWN below (start wave / spawn).
-                        else:
-                            continue
+                        continue
                     if event.type == pygame.MOUSEBUTTONDOWN: # 1 is left, 3 is right
                         if event.button == 1:
                             ui_action = self.ui_check_click(event.pos)
@@ -2012,10 +2145,12 @@ class Game:
                                     self.scroll_page = 0
                                 if self.showing_book is True:
                                     self.showing_book = not self.showing_book
+                                self._clear_path_editing()
                             elif ui_action == "BOOK_OF_LIFE":
                                 self.showing_book = not self.showing_book
                                 if self.showing_scroll is True:
                                     self.showing_scroll = not self.showing_scroll
+                                self._clear_path_editing()
                             elif ui_action and ui_action.startswith("SPAWN_BOX_"):
                                 mob_index = int(ui_action.split("_")[2])
                                 if not self.is_mob_unlocked(mob_index):
@@ -2052,13 +2187,16 @@ class Game:
                             elif ui_action == "DEV_SKIP_WAVE":
                                 self._dev_skip_wave()
                             elif ui_action == "SETTINGS":
-                                # Show surrender screen
                                 self.showing_surrender = not self.showing_surrender
-                            elif ui_action == "SURRENDER_CLOSE":
-                                # Close surrender screen
+                                self._clear_path_editing()
+                            elif ui_action in ("SURRENDER_BACK", "SURRENDER_NO"):
                                 self.showing_surrender = False
+                                self._clear_path_editing()
+                            elif ui_action == "SURRENDER_YES":
+                                self.showing_surrender = False
+                                self.return_to_main_menu()
 ################################################################################################################
-                            else:
+                            elif not self._path_edit_locked():
                                 if self.build:
                                     self.set_path = True
                                 else:
@@ -2077,6 +2215,8 @@ class Game:
                                 self.round_active = False
                         if event.key == pygame.K_b:
                             self.build = not self.build
+                        if event.key == pygame.K_v:
+                            self.see_through_obstacles = True
                         if event.key == pygame.K_1 and self.is_mob_unlocked(0):
                             self.selected_mob_type = 0
                         if event.key == pygame.K_2 and self.is_mob_unlocked(1):
@@ -2106,7 +2246,8 @@ class Game:
                         # Automatic spawning disabled - player controls spawning
                         pass
                     elif event.type == pygame.KEYUP:
-                        pass
+                        if event.key == pygame.K_v:
+                            self.see_through_obstacles = False
             # Tree kill is handled in combat update via _on_tree_destroyed()
 
             # Check lose condition: failed to kill the tree within the wave limit
