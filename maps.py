@@ -280,11 +280,12 @@ class Maps:
 
     @staticmethod
     def branches_for_wave(wave: int) -> int:
-        """Branch budget to buy mobs during combat."""
-        return 6 + max(0, wave - 1) * 2
+        """Branch budget to buy mobs during combat (see main.WAVE_BRANCHES)."""
+        from main import branches_for_wave as _branches_for_wave
+        return _branches_for_wave(wave)
 
     @staticmethod
     def tree_health_for_wave(wave: int) -> int:
-        """HP scaled to branch budget so a full assault can kill the tree in one round."""
-        branches = Maps.branches_for_wave(wave)
-        return max(16, int(branches * 2.4))
+        """Tree HP at wave start (see main.WAVE_TREE_HEALTH)."""
+        from main import tree_health_for_wave as _tree_health_for_wave
+        return _tree_health_for_wave(wave)
