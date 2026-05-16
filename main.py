@@ -42,11 +42,36 @@ TOWER_TILE_TYPES = {
     "-8": ("bush", TOWER_BUSH),
 }
 
-# Right-side HUD stack (aligned over branches + clock art on UI_play.png)
-HUD_WAVE_POS = (700, 8)
-HUD_TILES_POS = (700, 36)
-HUD_BRANCHES_POS = (735, 64)
-HUD_TIMER_POS = (742, 92)
+# ---------------------------------------------------------------------------
+# HUD layout (see bground/UI_play.png — branch + clock icons are baked into that image)
+#
+# TO MOVE ICONS UP/DOWN (change art position):
+#   Edit bground/UI_play.png in an image editor. Approx. regions on the 1400×1000 source:
+#     • Branch (twig):  x≈998–1043, y≈70–100
+#     • Timer (watch):  x≈1003–1049, y≈132–189
+#   On screen, icon Y ≈ (pixel Y in PNG) × 0.75  (UI is scaled 0.7×0.75 at blit 0,0).
+#
+# TO MOVE THE NUMBERS UP/DOWN (keep icons where they are in the PNG):
+#   Change the Y value in the anchors below (smaller Y = higher, larger Y = lower).
+#   X is the left edge of the number, just to the right of each icon.
+# ---------------------------------------------------------------------------
+UI_PLAY_SCALE = (0.7, 0.75)
+HUD_WAVE_POS = (700, 60)
+HUD_TILES_POS = (700, 100)
+# Default Y aligns with baked-in icons at ~y=63 (branch) and ~y=120 (timer) on screen.
+HUD_BRANCH_TEXT_ANCHOR = (740, 158)
+HUD_TIMER_TEXT_ANCHOR = (755, 220)
+
+# Mob index: 0 worm, 1 butterfly, 2 dragonfly, 3 snail, 4 beetle
+MOB_UNLOCK_WAVES = (1, 2, 4, 7, 10)
+# 2×3 Spawn grid on UI_play.png (screen coords, UI_PLAY_SCALE)
+MOB_GRID_COLS = 3
+MOB_GRID_ROWS = 2
+MOB_GRID_CENTERS = (
+    (735, 338), (812, 338), (889, 338),
+    (735, 408), (812, 408), (889, 408),
+)
+MOB_SLOT_SIZE = (50, 38)
 
 TREE_TAUNTS = [
     "The oak laughs in mulch.",
@@ -255,23 +280,8 @@ class Game:
         self.mob_spawn_cooldown_until = {i: 0 for i in range(5)}
         self._tree_kill_handled = False
         
-        # Which bug types appear each wave (unlocks over time)
-        self.wave_mobs = {
-            1: [0],
-            2: [0, 1],
-            3: [0, 1, 2],
-            4: [0, 1, 2, 3],
-            5: [0, 1, 2, 3, 4],
-        }
-
         self.wave = 1
         self.begin_wave_setup()
-        
-        # Mob UI positioning for purchase squares on the right
-        self.mob_ui_rect_size = 60
-        self.mob_ui_start_x = 850
-        self.mob_ui_start_y = 150
-        self.mob_ui_spacing = 70
 
         pygame.font.init()
         
@@ -495,7 +505,19 @@ class Game:
         self.surface.blit(c3, (bx + 24, y))
 
     def get_available_mobs_for_wave(self) -> list[int]:
-        return self.wave_mobs.get(min(self.wave, 5), [0, 1, 2, 3, 4])
+        return [i for i in range(5) if self.is_mob_unlocked(i)]
+
+    def _mob_grid_slot_index(self, mob_index: int) -> int:
+        """Map mob type to fixed slot in the 2×3 grid (row-major)."""
+        return mob_index
+
+    def _mob_grid_slot_center(self, slot: int) -> tuple[int, int]:
+        return MOB_GRID_CENTERS[slot]
+
+    def _mob_grid_slot_rect(self, slot: int) -> pygame.Rect:
+        cx, cy = self._mob_grid_slot_center(slot)
+        w, h = MOB_SLOT_SIZE
+        return pygame.Rect(cx - w // 2, cy - h // 2, w, h)
 
     def _refresh_wave_and_branch_hud(self) -> None:
         """Keep wave + branch labels in sync when a new wave starts or branches change."""
@@ -504,7 +526,7 @@ class Game:
             "Wave: " + roman, True, (0, 0, 0)
         )
         self.cached_text_surfaces['branches'] = self.cached_font_large.render(
-            f"Branches  {self.current_branches}", True, (0, 0, 0)
+            f": {self.current_branches}", True, (0, 0, 0)
         )
         self.last_wave = self.wave
         self.last_branches = self.current_branches
@@ -528,6 +550,7 @@ class Game:
         self.mob_spawn_cooldown_until = {i: 0 for i in range(5)}
         if hasattr(self, 'cached_font_large'):
             self._refresh_wave_and_branch_hud()
+            self._refresh_timer_hud(force=True)
 
     def _tower_range_pixels(self, radius_tiles: float) -> float:
         w, h = self.spriteSize
@@ -583,18 +606,33 @@ class Game:
         remaining_ms = self.wave_deadline_ms - pygame.time.get_ticks()
         return max(0, int((remaining_ms + 999) // 1000))
 
-    def _draw_wave_timer(self) -> None:
-        if not self.round_active or self.edit_mode or self.wave_deadline_ms is None:
-            return
+    def _refresh_timer_hud(self, force: bool = False) -> None:
         sec = self._wave_time_remaining_seconds()
-        if sec != self.last_timer_second:
-            color = (200, 40, 30) if sec <= 10 else (30, 50, 30)
-            self.cached_text_surfaces['timer'] = self.cached_font_large.render(
-                f"{sec}s", True, color
-            )
-            self.last_timer_second = sec
-        if 'timer' in self.cached_text_surfaces:
-            self.surface.blit(self.cached_text_surfaces['timer'], HUD_TIMER_POS)
+        if not force and sec == self.last_timer_second:
+            return
+        in_combat = (
+            self.round_active
+            and not self.edit_mode
+            and self.wave_deadline_ms is not None
+        )
+        color = (200, 40, 30) if in_combat and sec <= 10 else (30, 50, 30)
+        self.cached_text_surfaces['timer'] = self.cached_font_large.render(
+            str(sec), True, color
+        )
+        self.last_timer_second = sec
+
+    def _blit_hud_midleft(self, surface_key: str, anchor: tuple[int, int]) -> None:
+        surf = self.cached_text_surfaces.get(surface_key)
+        if surf is None:
+            return
+        dest = surf.get_rect(midleft=anchor)
+        self.surface.blit(surf, dest)
+
+    def _draw_hud_branch_and_timer(self) -> None:
+        """Draw branch count + countdown beside icons in UI_play.png (text anchors only)."""
+        self._blit_hud_midleft('branches', HUD_BRANCH_TEXT_ANCHOR)
+        self._refresh_timer_hud()
+        self._blit_hud_midleft('timer', HUD_TIMER_TEXT_ANCHOR)
 
     def _mob_spawn_on_cooldown(self, mob_index: int) -> bool:
         return pygame.time.get_ticks() < self.mob_spawn_cooldown_until.get(mob_index, 0)
@@ -673,7 +711,11 @@ class Game:
             self.cached_island_image = pygame.transform.scale(island_raw, (int(island_raw.get_width() * 1), int(island_raw.get_height() * 1.2)))
             
             ui_raw = self.load_world("UI_play.png")
-            self.cached_ui_image = pygame.transform.scale(ui_raw, (int(ui_raw.get_width() * 0.7), int(ui_raw.get_height() * 0.75)))
+            sx, sy = UI_PLAY_SCALE
+            self.cached_ui_image = pygame.transform.scale(
+                ui_raw,
+                (int(ui_raw.get_width() * sx), int(ui_raw.get_height() * sy)),
+            )
             
             tree_life_raw = self.load_world("tree_of_life.png")
             self.cached_tree_life_image = pygame.transform.scale(tree_life_raw, (int(tree_life_raw.get_width() * 1.5), int(tree_life_raw.get_height() * 1.5)))
@@ -702,7 +744,8 @@ class Game:
             
             # Spawn box image
             woodbox_raw = self.load_world('woodbox.png')
-            self.cached_woodbox = pygame.transform.scale(woodbox_raw, (int(woodbox_raw.get_width() * 0.8), int(woodbox_raw.get_height() * 0.8)))
+            slot = MOB_SLOT_SIZE[0]
+            self.cached_woodbox = pygame.transform.smoothscale(woodbox_raw, (slot, slot))
             
             # Load hammer cursor images (for build mode)
             self.hammer_images = []
@@ -886,6 +929,7 @@ class Game:
         self.initiate_cached_images()  # Pre-load and cache background images
         self.initiate_cached_fonts()  # Pre-load fonts
         self._refresh_wave_and_branch_hud()
+        self._refresh_timer_hud(force=True)
         self.run_event_loop()
 
     def quit_app(self) -> None:
@@ -1248,21 +1292,7 @@ class Game:
         if self.showing_book:
             self.surface.blit(self.cached_book_of_lifeopen, (-40, 230))
         
-        # Draw spawn boxes with mobs in order (dragonfly, worm, butterfly, snail, beetle)
-        spawn_box_x_start = 1130  # X position for spawn boxes
-        spawn_box_y_start = 580  # Starting Y position
         self.draw_spawn_boxes()
-
-        # Draw selected mob icon in bottom right
-        if self.selected_mob_type in self.cached_mob_icons:
-            selected_icon = self.cached_mob_icons[self.selected_mob_type]
-            # Position it below the spawn boxes
-            icon_x = spawn_box_x_start + 100  # A bit to the right of spawn boxes
-            icon_y = spawn_box_y_start + 100  # Below the spawn boxes
-            self.surface.blit(selected_icon, (icon_x, icon_y))
-            # Draw a label
-            selected_text = self.cached_font_large.render("Selected", True, (0, 0, 0))
-            self.surface.blit(selected_text, (icon_x, icon_y - 30))
 
         ##### UI PRESS #####
         # Use hitboxes that match the buttons already in the background image (UI_play.png)
@@ -1336,8 +1366,7 @@ class Game:
 
         self.surface.blit(self.cached_text_surfaces['wave'], HUD_WAVE_POS)
         self.surface.blit(self.cached_text_surfaces['tiles'], HUD_TILES_POS)
-        self.surface.blit(self.cached_text_surfaces['branches'], HUD_BRANCHES_POS)
-        self._draw_wave_timer()
+        self._draw_hud_branch_and_timer()
         self.surface.blit(self.cached_text_surfaces['units'], (1130, 550))
 
         
@@ -1349,54 +1378,49 @@ class Game:
         #self.surface.blit(scale_fix_scroll, (670, 230)) THIS IS THE SCROLL
     
     def draw_spawn_boxes(self):
-        """Draw spawn boxes showing mobs in the correct order - 2 rows of 3 boxes"""
-        # Spawn box positions - 2 rows, 3 columns
-        spawn_box_x_start = 1130  # X position for spawn boxes
-        spawn_box_y_start = 580  # Starting Y position
-        spawn_box_spacing_x = 35  # Horizontal spacing between boxes
-        spawn_box_spacing_y = 35  # Vertical spacing between boxes
-        
-        # Mob order: 0=worm, 1=butterfly, 2=dragonfly, 3=snail, 4=beetle (matches script of evil order)
-        mob_names = ['worm', 'butterfly', 'dragonfly', 'snail', 'beetle']
-        
-        for i, mob_name in enumerate(mob_names):
-            # Calculate position: 2 rows, 3 columns
-            row = i // 3
-            col = i % 3
-            x_pos = spawn_box_x_start + (col * spawn_box_spacing_x)
-            y_pos = spawn_box_y_start + (row * spawn_box_spacing_y)
-            
-            # Draw woodbox background
-            if hasattr(self, 'cached_woodbox'):
-                self.surface.blit(self.cached_woodbox, (x_pos, y_pos))
-            
-            # Draw mob icon in the box using cached icon
-            if i in self.cached_mob_icons:
-                mob_icon = self.cached_mob_icons[i]
-                # Center the icon in the box
-                box_center_x = x_pos + self.cached_woodbox.get_width() // 2
-                box_center_y = y_pos + self.cached_woodbox.get_height() // 2
-                icon_rect = mob_icon.get_rect(center=(box_center_x, box_center_y))
-                self.surface.blit(mob_icon, icon_rect)
-                
-                # Draw cost text below the icon
-                cost_text = self.cached_font_large.render(str(self.mob_costs[i]), True, (0, 0, 0))
-                cost_rect = cost_text.get_rect(center=(box_center_x, box_center_y + 20))
-                self.surface.blit(cost_text, cost_rect)
-                
-                # Store hitbox for clicking - use exact woodbox dimensions
-                spawn_hitbox = pygame.Rect(x_pos, y_pos, self.cached_woodbox.get_width(), self.cached_woodbox.get_height())
-                self.ui_hitboxes[f'spawn_box_{i}'] = spawn_hitbox
-                
-                # Highlight selected mob
-                if i == self.selected_mob_type:
-                    # Draw highlight border
-                    highlight_rect = pygame.Rect(x_pos, y_pos, self.cached_woodbox.get_width(), self.cached_woodbox.get_height())
-                    pygame.draw.rect(self.surface, (255, 255, 0), highlight_rect, 3)
+        """Mob buttons in the 2×3 Spawn grid on UI_play.png (5 mobs + 1 empty slot)."""
+        for slot in range(MOB_GRID_COLS * MOB_GRID_ROWS):
+            slot_rect = self._mob_grid_slot_rect(slot)
+            cx, cy = self._mob_grid_slot_center(slot)
+            x_pos, y_pos = slot_rect.x, slot_rect.y
+            box_w, box_h = slot_rect.width, slot_rect.height
 
-                box_w = self.cached_woodbox.get_width()
-                box_h = self.cached_woodbox.get_height()
-                self._draw_spawn_cooldown_overlay(x_pos, y_pos, box_w, box_h, i)
+            if slot < 5:
+                mob_index = slot
+                unlocked = self.is_mob_unlocked(mob_index)
+
+                if hasattr(self, 'cached_woodbox'):
+                    self.surface.blit(
+                        self.cached_woodbox,
+                        self.cached_woodbox.get_rect(center=(cx, cy)),
+                    )
+                    if not unlocked:
+                        dim = pygame.Surface((box_w, box_h), pygame.SRCALPHA)
+                        dim.fill((20, 15, 10, 160))
+                        self.surface.blit(dim, slot_rect)
+
+                if unlocked and mob_index in self.cached_mob_icons:
+                    mob_icon = self.cached_mob_icons[mob_index]
+                    icon_rect = mob_icon.get_rect(center=(cx, cy - 4))
+                    self.surface.blit(mob_icon, icon_rect)
+                    cost = self.mob_costs[mob_index]
+                    affordable = self.current_branches >= cost
+                    cost_color = (0, 200, 0) if affordable else (200, 0, 0)
+                    cost_text = self.cached_font_small.render(str(cost), True, cost_color)
+                    cost_rect = cost_text.get_rect(midtop=(cx, cy + 10))
+                    self.surface.blit(cost_text, cost_rect)
+                    self.ui_hitboxes[f'spawn_box_{mob_index}'] = slot_rect
+                    if mob_index == self.selected_mob_type:
+                        pygame.draw.rect(self.surface, (255, 255, 0), slot_rect, 2)
+                    self._draw_spawn_cooldown_overlay(x_pos, y_pos, box_w, box_h, mob_index)
+                else:
+                    lock_txt = self.cached_font_small.render(
+                        f"W{self.get_unlock_wave(mob_index)}", True, (90, 90, 90)
+                    )
+                    lock_rect = lock_txt.get_rect(center=(cx, cy))
+                    self.surface.blit(lock_txt, lock_rect)
+            else:
+                pygame.draw.rect(self.surface, (60, 45, 35), slot_rect, 1)
     
     def ui_check_click(self, mouse_pos):
         if 'dev_skip_wave' in self.ui_hitboxes and self.ui_hitboxes['dev_skip_wave'].collidepoint(mouse_pos):
@@ -1406,13 +1430,7 @@ class Game:
         if self.showing_surrender and 'surrender_close' in self.ui_hitboxes and self.ui_hitboxes['surrender_close'].collidepoint(mouse_pos):
             return "SURRENDER_CLOSE"
         
-        # Check mob purchase clicks on right side
-        for i in range(5):
-            purchase_key = f'mob_purchase_{i}'
-            if purchase_key in self.ui_hitboxes and self.ui_hitboxes[purchase_key].collidepoint(mouse_pos):
-                return f"MOB_PURCHASE_{i}"
-        
-        # Check spawn box clicks
+        # Check spawn box clicks (2×3 mob grid)
         for i in range(5):  # 5 mob types
             box_key = f'spawn_box_{i}'
             if box_key in self.ui_hitboxes and self.ui_hitboxes[box_key].collidepoint(mouse_pos):
@@ -1450,39 +1468,6 @@ class Game:
         idx = int((1.0 - pct) * (n - 1))
         return self.health_frames[min(max(0, idx), n - 1)]
     
-    def draw_mob_purchase_ui(self):
-        """Draw mob purchase squares on the right side of the screen"""
-        mob_names = ['worm', 'butterfly', 'dragonfly', 'snail', 'beetle']
-        available_mobs = self.get_available_mobs_for_wave()
-        
-        for i, mob_index in enumerate(available_mobs):
-            x = self.mob_ui_start_x
-            y = self.mob_ui_start_y + (i * self.mob_ui_spacing)
-            
-            # Draw background square
-            pygame.draw.rect(self.surface, (100, 100, 100), (x, y, self.mob_ui_rect_size, self.mob_ui_rect_size))
-            pygame.draw.rect(self.surface, (255, 255, 255), (x, y, self.mob_ui_rect_size, self.mob_ui_rect_size), 2)
-            
-            # Draw mob icon if available
-            if mob_index in self.cached_mob_icons:
-                mob_icon = self.cached_mob_icons[mob_index]
-                icon_rect = mob_icon.get_rect(center=(x + self.mob_ui_rect_size // 2, y + self.mob_ui_rect_size // 2))
-                self.surface.blit(mob_icon, icon_rect)
-            
-            # Draw cost text
-            cost = self.mob_costs[mob_index]
-            cost_color = (0, 200, 0) if self.current_branches >= cost else (200, 0, 0)
-            cost_text = self.cached_font_large.render(str(cost), True, cost_color)
-            cost_rect = cost_text.get_rect(topleft=(x + 5, y + 5))
-            self.surface.blit(cost_text, cost_rect)
-            
-            # Highlight if selected
-            if mob_index == self.selected_mob_type:
-                pygame.draw.rect(self.surface, (255, 255, 0), (x, y, self.mob_ui_rect_size, self.mob_ui_rect_size), 3)
-            
-            # Store hitbox for clicking
-            self.ui_hitboxes[f'mob_purchase_{mob_index}'] = pygame.Rect(x, y, self.mob_ui_rect_size, self.mob_ui_rect_size)
-    
     def draw_tree_of_life(self):
         if self.tree_health > 0:
             current_health_img = self.get_health_frame()
@@ -1496,24 +1481,15 @@ class Game:
         else:
             pass
 
-    def is_mob_unlocked(self, mob_index):
-        """Check if a mob type is unlocked based on current wave"""
-        if mob_index == 0:  # worm - always unlocked
-            return True
-        elif mob_index == 1:  # butterfly - unlocked at wave 2
-            return self.wave >= 2
-        elif mob_index == 2:  # dragonfly - unlocked at wave 4
-            return self.wave >= 4
-        elif mob_index == 3:  # snail - unlocked at wave 8
-            return self.wave >= 8
-        elif mob_index == 4:  # beetle - unlocked at wave 12
-            return self.wave >= 12
+    def is_mob_unlocked(self, mob_index: int) -> bool:
+        if 0 <= mob_index < len(MOB_UNLOCK_WAVES):
+            return self.wave >= MOB_UNLOCK_WAVES[mob_index]
         return False
-    
-    def get_unlock_wave(self, mob_index):
-        """Get the wave number required to unlock a mob type"""
-        unlock_waves = {0: 1, 1: 2, 2: 4, 3: 8, 4: 12}
-        return unlock_waves.get(mob_index, 999)
+
+    def get_unlock_wave(self, mob_index: int) -> int:
+        if 0 <= mob_index < len(MOB_UNLOCK_WAVES):
+            return MOB_UNLOCK_WAVES[mob_index]
+        return 999
 
     def intToRoman(self, num):
         Roman = ""
@@ -1762,7 +1738,6 @@ class Game:
                     item['obj'].draw(self.surface)
 
             self.draw_UI()
-            self.draw_mob_purchase_ui()
             
             # Draw cursor icon (hammer for build mode, shovel for delete mode)
             if self.edit_mode:
@@ -1962,32 +1937,20 @@ class Game:
                                 self.showing_book = not self.showing_book
                                 if self.showing_scroll is True:
                                     self.showing_scroll = not self.showing_scroll
-                            elif ui_action and ui_action.startswith("MOB_PURCHASE_"):
-                                # Clicked on mob purchase square on the right side
-                                # Only allow purchasing during active round (after paths and towers are placed)
-                                if self.round_active and not self.edit_mode:
-                                    mob_index = int(ui_action.split("_")[2])
-                                    available_mobs = self.get_available_mobs_for_wave()
+                            elif ui_action and ui_action.startswith("SPAWN_BOX_"):
+                                mob_index = int(ui_action.split("_")[2])
+                                if not self.is_mob_unlocked(mob_index):
+                                    pass
+                                elif self.round_active and not self.edit_mode:
+                                    self.selected_mob_type = mob_index
                                     if (
-                                        mob_index in available_mobs
-                                        and self.current_branches >= self.mob_costs[mob_index]
+                                        self.current_branches >= self.mob_costs[mob_index]
                                         and not self._mob_spawn_on_cooldown(mob_index)
                                     ):
-                                        self.selected_mob_type = mob_index
                                         cost = self.mob_costs[mob_index]
                                         if self._spawn_mob_on_path(mob_index):
                                             self.current_branches -= cost
                                 else:
-                                    # Just select the mob type for preview even if round hasn't started
-                                    mob_index = int(ui_action.split("_")[2])
-                                    available_mobs = self.get_available_mobs_for_wave()
-                                    if mob_index in available_mobs:
-                                        self.selected_mob_type = mob_index
-                            elif ui_action and ui_action.startswith("SPAWN_BOX_"):
-                                # Clicked on a spawn box - select that mob type
-                                mob_index = int(ui_action.split("_")[2])
-                                # Only select if mob is unlocked
-                                if self.is_mob_unlocked(mob_index):
                                     self.selected_mob_type = mob_index
                             elif ui_action == "SPAWN_WAVE":
                                 if self.round_active and not self.edit_mode:
@@ -2034,20 +1997,16 @@ class Game:
                                 self.round_active = False
                         if event.key == pygame.K_b:
                             self.build = not self.build
-                        if event.key == pygame.K_1:
+                        if event.key == pygame.K_1 and self.is_mob_unlocked(0):
                             self.selected_mob_type = 0
-                        if event.key == pygame.K_2:
-                            if self.wave >= 2:
-                                self.selected_mob_type = 1
-                        if event.key == pygame.K_3:
-                            if self.wave >= 4:
-                                self.selected_mob_type = 2
-                        if event.key == pygame.K_4:
-                            if self.wave >= 8:
-                                self.selected_mob_type = 3
-                        if event.key == pygame.K_5:
-                            if self.wave >= 12:
-                                self.selected_mob_type = 4
+                        if event.key == pygame.K_2 and self.is_mob_unlocked(1):
+                            self.selected_mob_type = 1
+                        if event.key == pygame.K_3 and self.is_mob_unlocked(2):
+                            self.selected_mob_type = 2
+                        if event.key == pygame.K_4 and self.is_mob_unlocked(3):
+                            self.selected_mob_type = 3
+                        if event.key == pygame.K_5 and self.is_mob_unlocked(4):
+                            self.selected_mob_type = 4
                         if event.key in (pygame.K_SPACE, pygame.K_RETURN):
                             # If round hasn't started, start the round
                             if self.is_grid_valid(self.world_grid) and not self.round_active and self.round_ended:
