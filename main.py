@@ -71,7 +71,7 @@ MOB_GRID_SLOT_W = 56
 MOB_GRID_SLOT_H = 56
 SCRIPT_OF_EVIL_PAGE_COUNT = 5  # worm → beetle scroll pages
 SFX_VOLUME_MAX = 10
-DEBUG_UI_OUTLINES = True
+DEBUG_UI_OUTLINES = False
 OBSTACLE_SEE_THROUGH_ALPHA = 0
 TOWER_HOVER_ALPHA = 100
 UI_BORDER_BROWN = (255, 200, 80)
@@ -1154,11 +1154,12 @@ class Game:
                 # When B is pressed (build = False, delete mode): highlight path tiles on hover
                 # When B is not pressed (build = True, build mode): highlight grass tiles on hover
                 if self.world_grid[i][j] == 0:
-                    # Grass tile - highlight on hover if in build mode (B not pressed)
-                    if is_hovered and self.build and not self._path_edit_locked():
-                        self.surface.blit(self.h_tiles["dark_grass"], (draw_x, draw_y)) # Highlighted Grass
+                    if self.see_through_obstacles:
+                        self.surface.blit(self.h_tiles["dark_grass"], (draw_x, draw_y))
+                    elif is_hovered and self.build and not self._path_edit_locked():
+                        self.surface.blit(self.h_tiles["dark_grass"], (draw_x, draw_y))
                     else:
-                        self.surface.blit(self.tiles["dark_grass"], (draw_x, draw_y)) # Normal Grass
+                        self.surface.blit(self.tiles["dark_grass"], (draw_x, draw_y))
                 elif self.world_grid[i][j] == 1:
                     sprite = self.get_path_sprite(i, j)
                     if self.see_through_obstacles and self._is_v_path_tile(1):

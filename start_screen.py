@@ -8,7 +8,7 @@ import random
 
 DEFAULT_WIDTH   = 978
 DEFAULT_HEIGHT  = 750
-DEBUG_UI_OUTLINES = True
+DEBUG_UI_OUTLINES = False
 
 class StartScreen:
     def __init__(self, surface):
