@@ -72,6 +72,9 @@ MOB_GRID_SLOT_H = 56
 SCRIPT_OF_EVIL_PAGE_COUNT = 5  # worm → beetle scroll pages
 SFX_VOLUME_MAX = 11
 DEBUG_UI_OUTLINES = True
+# Temporary poison VFX until dedicated UI (grid -8 = bush)
+POISON_OUTLINE_COLOR = (40, 220, 70)
+POISON_OUTLINE_WIDTH = 3
 # Surrender popup (coords relative to scaled surrenderpage blit top-left, scale 0.8)
 SURRENDER_HITBACK = pygame.Rect(69, 67, 21, 22)
 SURRENDER_HIT_NO = pygame.Rect(95, 148, 130, 58)
@@ -140,6 +143,7 @@ class Mob:
         self.pos = pygame.Vector2(self.waypoints[0]) if self.waypoints else pygame.Vector2(0,0)
         self.target_idx = 1
         self.at_end = False
+        self.poisoned = False
 
         self.mobframes_right = [self.load_mob(f) for f in self.mobtype[self.randmob]]
         self.mobframes_left = [pygame.transform.flip(f, True, False) for f in self.mobframes_right]
@@ -210,6 +214,13 @@ class Mob:
         # Offset mob slightly downward to align with shadows
         sprite_rect = current_sprite.get_rect(center=(self.pos.x, self.pos.y + 8))
         surface.blit(current_sprite, sprite_rect)
+        if self.poisoned:
+            pygame.draw.rect(
+                surface,
+                POISON_OUTLINE_COLOR,
+                sprite_rect.inflate(8, 8),
+                POISON_OUTLINE_WIDTH,
+            )
 
         if self.health > 0:
             bar_width = 40
@@ -278,6 +289,7 @@ class Game:
         self.mob_costs = list(MOB_BRANCH_COSTS)
         self.mob_spawn_cooldown_until = {i: 0 for i in range(5)}
         self._tree_kill_handled = False
+        self.poison_bush_cells: set[tuple[int, int]] = set()
         
         self.wave = 1
         self.begin_wave_setup()
@@ -881,6 +893,37 @@ class Game:
     def get_map_pivot(self) -> tuple[float, float]:
         return self.width / 3, 125 * 2.6
 
+    def _world_to_grid(self, world_x: float, world_y: float) -> tuple[int, int]:
+        pivot_x, pivot_y = self.get_map_pivot()
+        w, h = self.spriteSize
+        half_w, half_h = w / 2, h / 4
+        rel_x, rel_y = world_x - pivot_x, world_y - pivot_y
+        grid_j = (rel_x / half_w + rel_y / half_h) / 2
+        grid_i = (rel_y / half_h - rel_x / half_w) / 2
+        return int(np.floor(grid_i)), int(np.floor(grid_j))
+
+    def _rebuild_poison_bush_cells(self) -> None:
+        """Bush tiles (-8) and path placed on them stay poison sources."""
+        cells: set[tuple[int, int]] = set()
+        for i in range(self.grid_rows):
+            for j in range(self.grid_cols):
+                if self.world_grid[i][j] == -8:
+                    cells.add((i, j))
+        for ij in self.poison_bush_cells:
+            i, j = ij
+            if 0 <= i < self.grid_rows and 0 <= j < self.grid_cols:
+                if self.world_grid[i][j] == 1:
+                    cells.add(ij)
+        self.poison_bush_cells = cells
+
+    def _update_mob_poison_status(self) -> None:
+        for mob in self.mobs:
+            if mob.at_end or mob.health <= 0:
+                continue
+            gi, gj = self._world_to_grid(mob.pos.x, mob.pos.y)
+            if (gi, gj) in self.poison_bush_cells:
+                mob.poisoned = True
+
     def sync_map_layout(self) -> None:
         """Match loop bounds and tile scale to the active Maps.py level size."""
         self.grid_rows, self.grid_cols = Maps.grid_dimensions(self.world_grid)
@@ -1029,25 +1072,37 @@ class Game:
                     if tile_value in [-9, -8, "b2", "l1"]:
                         self.hovered_tower_type = tile_value
                 
-                # Handle path editing
-                if self.edit_mode and type(self.world_grid[i][j]) == int and self.world_grid[i][j] >= 0 and is_hovered:
+                # Handle path editing (grass, path, and bush -8)
+                tile_int = self.world_grid[i][j]
+                can_edit_path = (
+                    self.edit_mode
+                    and is_hovered
+                    and (
+                        (type(tile_int) == int and tile_int >= 0)
+                        or tile_int == -8
+                    )
+                )
+                if can_edit_path:
                     self.highlight = True
                     if self.set_path and self.paths_remaining > 0:
-                        if  self.world_grid[i][j] != 1:
+                        if tile_int != 1:
+                            if tile_int == -8:
+                                self.poison_bush_cells.add((i, j))
                             self.world_grid[i][j] = 1
                             self.paths_remaining -= 1
-                            # Trigger hammer animation when tile changes
                             self.tile_changed = True
                             self.hammer_animating = True
-                            self.hammer_animation_duration = 0.5  # Animation duration in seconds
+                            self.hammer_animation_duration = 0.5
                     elif self.rm_path:
-                        if  self.world_grid[i][j] != 0:
-                            self.world_grid[i][j] = 0
+                        if tile_int == 1:
+                            if (i, j) in self.poison_bush_cells:
+                                self.world_grid[i][j] = -8
+                            else:
+                                self.world_grid[i][j] = 0
                             self.paths_remaining += 1
-                            # Trigger hammer animation when tile changes
                             self.tile_changed = True
                             self.hammer_animating = True
-                            self.hammer_animation_duration = 0.5  # Animation duration in seconds
+                            self.hammer_animation_duration = 0.5
                 else:
                     self.highlight = False
                 
@@ -1086,7 +1141,10 @@ class Game:
                 elif self.world_grid[i][j] == -9:
                     self.surface.blit(self.tiles["red"], (draw_x, draw_y)) # Tree
                 elif self.world_grid[i][j] == -8:
-                    self.surface.blit(self.tiles["dark_grass"], (draw_x, draw_y)) # Tree
+                    if is_hovered and self.build:
+                        self.surface.blit(self.h_tiles["dark_grass"], (draw_x, draw_y))
+                    else:
+                        self.surface.blit(self.tiles["dark_grass"], (draw_x, draw_y))
 
     def find_all_ends(self):
         """Find all -1 positions (start and end points)"""
@@ -1629,7 +1687,10 @@ class Game:
                             'surf': surf, 
                             'pos': (draw_x, (draw_y - h * 1.2) + bobbing_offset)
                         })
-                if tile_val in [-8, -9]:
+                is_bush = tile_val == -8 or (
+                    tile_val == 1 and (i, j) in self.poison_bush_cells
+                )
+                if tile_val == -9 or is_bush:
                     draw_x = pivot_x + (j - i) * half_w - half_w
                     draw_y = pivot_y + (j + i) * half_h
                     
@@ -1778,6 +1839,7 @@ class Game:
                 
                 self.mobs = [m for m in self.mobs if not m.at_end]
                 
+                self._update_mob_poison_status()
                 for mob in self.mobs:
                     mob.update()
                     layer_queue.append({
@@ -1925,6 +1987,7 @@ class Game:
         maps_data = Maps()
         self.world_grid = copy.deepcopy(maps_data.levels[self.current_level_id])
         self.sync_map_layout()
+        self._rebuild_poison_bush_cells()
         area_ratio = (self.grid_size / REFERENCE_GRID_SIZE) ** 2
         self.paths_remaining = max(5, int(BASE_MAX_TILES * area_ratio))
         if pygame.display.get_surface() is not None:
