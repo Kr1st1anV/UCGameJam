@@ -111,11 +111,6 @@ class Maps:
         return 6 + max(0, wave - 1) * 2
 
     @staticmethod
-    def mob_quota_for_wave(wave: int) -> int:
-        """Max bugs the player may spawn this wave."""
-        return min(14, 3 + wave // 2)
-
-    @staticmethod
     def tree_health_for_wave(wave: int) -> int:
         """Tree starts each wave at this HP (grows each wave)."""
         return 180 + wave * 125

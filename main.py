@@ -21,7 +21,7 @@ ASSETS_UI_DIR = os.path.join(os.path.dirname(__file__), 'assets', 'ui')
 ASSETS_MOBS_DIR = os.path.join(os.path.dirname(__file__), 'assets', 'mobs')
 
 MAX_WAVES = 20
-TILE_DRAW_SCALE = 1.62  # slightly larger than original 1.5
+TILE_DRAW_SCALE = 1.75  # larger isometric tiles (reference layout was 1.5)
 
 TREE_TAUNTS = [
     "The oak laughs in mulch.",
@@ -241,8 +241,6 @@ class Game:
         }
 
         self.wave = 1
-        self.mob_quota_this_wave = 0
-        self.mobs_spawned_this_round = 0
         self.begin_wave_setup()
         
         # Mob UI positioning for purchase squares on the right
@@ -256,8 +254,8 @@ class Game:
         # Cache for rendered text surfaces to avoid re-rendering every frame
         self.cached_text_surfaces = {}
         self.last_wave = 0
-        self.last_mobs_remaining = -1
-        self.last_branches = 0
+        self.last_branches = -1
+        self.last_active_mobs = -1
         self.last_paths_remaining = -1        
 
     def x_transform(self, x, w, h):
@@ -449,8 +447,8 @@ class Game:
         title = self.cached_font_large.render("You are the infestation.", True, (255, 245, 200))
         sub = self.cached_font_medium.render("Drain the Tree of Life. Towers are not on your side.", True, (230, 230, 240))
         c1 = self.cached_font_small.render("Route tiles from spawn to the tree. SPACE starts the assault.", True, (200, 210, 255))
-        c2 = self.cached_font_small.render("Spend branches to spawn bugs during the wave. Drain the tree's HP.", True, (200, 210, 255))
-        c3 = self.cached_font_small.render("N = skip to next wave when no bugs are out. Click to continue.", True, (255, 220, 120))
+        c2 = self.cached_font_small.render("Spend branches to buy bugs during the wave. Drain the tree's HP.", True, (200, 210, 255))
+        c3 = self.cached_font_small.render("N = next wave when the field is clear. Click to continue.", True, (255, 220, 120))
         block_w = max(title.get_width(), sub.get_width(), c1.get_width(), c2.get_width(), c3.get_width()) + 48
         block_h = title.get_height() + sub.get_height() + c1.get_height() + c2.get_height() + c3.get_height() + 50
         bx = (self.width - block_w) // 2
@@ -470,18 +468,25 @@ class Game:
         y += c2.get_height() + 18
         self.surface.blit(c3, (bx + 24, y))
 
-    def mobs_remaining_this_wave(self) -> int:
-        return max(0, self.mob_quota_this_wave - self.mobs_spawned_this_round)
-
     def get_available_mobs_for_wave(self) -> list[int]:
         return self.wave_mobs.get(min(self.wave, 5), [0, 1, 2, 3, 4])
 
+    def _refresh_wave_and_branch_hud(self) -> None:
+        """Keep wave + branch labels in sync when a new wave starts or branches change."""
+        roman = self.intToRoman(self.wave)
+        self.cached_text_surfaces['wave'] = self.cached_font_large.render(
+            "Wave: " + roman, True, (0, 0, 0)
+        )
+        self.cached_text_surfaces['branches'] = self.cached_font_large.render(
+            f"Branches  {self.current_branches}", True, (0, 0, 0)
+        )
+        self.last_wave = self.wave
+        self.last_branches = self.current_branches
+
     def begin_wave_setup(self) -> None:
-        """New wave: map, branch budget, mob quota, and fresh tree HP (higher each wave)."""
+        """New wave: map, branch budget, and fresh tree HP (grows each wave)."""
         self.current_level_id = Maps.level_for_wave(self.wave)
         self.reset_grid(self.current_level_id)
-        self.mob_quota_this_wave = Maps.mob_quota_for_wave(self.wave)
-        self.mobs_spawned_this_round = 0
         self.current_branches = Maps.branches_for_wave(self.wave)
         self.tree_health_max = Maps.tree_health_for_wave(self.wave)
         self.tree_health = self.tree_health_max
@@ -489,13 +494,13 @@ class Game:
         self.round_active = False
         self.round_ended = True
         self.edit_mode = True
-        self.last_mobs_remaining = -1
+        self.last_wave = -1
         self.last_branches = -1
+        if hasattr(self, 'cached_font_large'):
+            self._refresh_wave_and_branch_hud()
 
     def _spawn_mob_on_path(self, mob_index: int) -> bool:
-        """Spawn one mob if path is valid, quota remains, and player can afford it."""
-        if self.mobs_spawned_this_round >= self.mob_quota_this_wave:
-            return False
+        """Spawn one mob if the path is valid and the player can afford it."""
         if self.current_branches < self.mob_costs[mob_index]:
             return False
         pts = self.get_path_waypoints()
@@ -503,19 +508,24 @@ class Game:
             return False
         px, py = self.get_map_pivot()
         self.mobs.append(Mob(pts, self.spriteSize, px, py, mob_index))
-        self.mobs_spawned_this_round += 1
         self._play_spawn_chirp()
         return True
 
     def _can_player_spawn_anything(self) -> bool:
-        if self.mobs_remaining_this_wave() <= 0:
-            return False
         if len(self.get_path_waypoints()) < 2:
             return False
         for i in self.get_available_mobs_for_wave():
             if self.is_mob_unlocked(i) and self.current_branches >= self.mob_costs[i]:
                 return True
         return False
+
+    def _dev_skip_wave(self) -> None:
+        """Hidden dev shortcut: jump to the next wave setup immediately."""
+        if self.showing_start_screen or self.showing_cutscene:
+            return
+        self.mobs = []
+        self.round_active = False
+        self._end_round_advance_wave()
 
     def _end_round_advance_wave(self) -> None:
         self.round_active = False
@@ -528,6 +538,8 @@ class Game:
         if self.wave > MAX_WAVES:
             return
         self.begin_wave_setup()
+        if hasattr(self, 'cached_font_large'):
+            self._refresh_wave_and_branch_hud()
 
     def initiate_cached_images(self):
         """Pre-load and cache all background images to avoid loading every frame"""
@@ -752,6 +764,7 @@ class Game:
         self.initiate_tree_health_bars()
         self.initiate_cached_images()  # Pre-load and cache background images
         self.initiate_cached_fonts()  # Pre-load fonts
+        self._refresh_wave_and_branch_hud()
         self.run_event_loop()
 
     def quit_app(self) -> None:
@@ -1151,13 +1164,16 @@ class Game:
         # Calculated: x=849, y=692, width=96, height=17
         self.ui_hitboxes['settings'] = pygame.Rect(849, 692, 96, 17)
 
+        # Dev-only: unlabeled skip control (top-left corner, no in-game label)
+        dev_skip_rect = pygame.Rect(6, 6, 16, 16)
+        self.ui_hitboxes['dev_skip_wave'] = dev_skip_rect
+        pygame.draw.rect(self.surface, (120, 145, 165), dev_skip_rect)
+        pygame.draw.rect(self.surface, (90, 110, 130), dev_skip_rect, 1)
+
         if self.round_active and not self.edit_mode:
             spawn_button_rect = pygame.Rect(700, 650, 180, 45)
             self.ui_hitboxes['spawn_wave'] = spawn_button_rect
-            can_spawn = (
-                self.mobs_remaining_this_wave() > 0
-                and self.current_branches >= self.mob_costs[self.selected_mob_type]
-            )
+            can_spawn = self.current_branches >= self.mob_costs[self.selected_mob_type]
             button_color = (0, 160, 0) if can_spawn else (100, 100, 100)
             pygame.draw.rect(self.surface, button_color, spawn_button_rect)
             pygame.draw.rect(self.surface, (255, 255, 255), spawn_button_rect, 2)
@@ -1165,40 +1181,25 @@ class Game:
             spawn_text_rect = spawn_text.get_rect(center=spawn_button_rect.center)
             self.surface.blit(spawn_text, spawn_text_rect)
 
-        # Cache text rendering - only re-render if values changed
-        if self.last_wave != self.wave:
-            romanNumeral = self.intToRoman(self.wave)
-            self.cached_text_surfaces['wave'] = self.cached_font_large.render("Wave: " + romanNumeral, True, (0, 0, 0))
-            self.last_wave = self.wave
-        
-        mobs_left = self.mobs_remaining_this_wave()
-        if self.last_mobs_remaining != mobs_left:
-            self.cached_text_surfaces['mobs'] = self.cached_font_large.render(
-                f'Mobs left: {mobs_left}/{self.mob_quota_this_wave}', True, (0, 0, 0)
+        if (
+            self.last_wave != self.wave
+            or self.last_branches != self.current_branches
+            or 'wave' not in self.cached_text_surfaces
+            or 'branches' not in self.cached_text_surfaces
+        ):
+            self._refresh_wave_and_branch_hud()
+
+        active = len(self.mobs)
+        if self.last_active_mobs != active:
+            self.cached_text_surfaces['units'] = self.cached_font_large.render(
+                f'On field: {active}', True, (0, 0, 0)
             )
-            self.last_mobs_remaining = mobs_left
-        
-        if self.last_branches != self.current_branches:
-            self.cached_text_surfaces['branches'] = self.cached_font_large.render(
-                f"Branches  {self.current_branches}", True, (0, 0, 0)
+            self.last_active_mobs = active
+        elif 'units' not in self.cached_text_surfaces:
+            self.cached_text_surfaces['units'] = self.cached_font_large.render(
+                f'On field: {active}', True, (0, 0, 0)
             )
-            self.last_branches = self.current_branches
-        
-        # Initialize text surfaces if they don't exist
-        if 'wave' not in self.cached_text_surfaces:
-            romanNumeral = self.intToRoman(self.wave)
-            self.cached_text_surfaces['wave'] = self.cached_font_large.render("Wave: " + romanNumeral, True, (0, 0, 0))
-        if 'mobs' not in self.cached_text_surfaces:
-            self.cached_text_surfaces['mobs'] = self.cached_font_large.render(
-                f'Mobs left: {self.mobs_remaining_this_wave()}/{self.mob_quota_this_wave}', True, (0, 0, 0)
-            )
-        if 'branches' not in self.cached_text_surfaces:
-            self.cached_text_surfaces['branches'] = self.cached_font_large.render(
-                f"Branches  {self.current_branches}", True, (0, 0, 0)
-            )
-        if 'units' not in self.cached_text_surfaces:
-            self.cached_text_surfaces['units'] = self.cached_font_large.render(f'Units:', True, (0, 0, 0))
-        
+
         self.surface.blit(self.cached_text_surfaces['wave'], (50, 70))
         self.surface.blit(self.cached_text_surfaces['branches'], (735, 45))
         self.surface.blit(self.cached_text_surfaces['units'], (1130, 550))
@@ -1258,6 +1259,9 @@ class Game:
                     pygame.draw.rect(self.surface, (255, 255, 0), highlight_rect, 3)
     
     def ui_check_click(self, mouse_pos):
+        if 'dev_skip_wave' in self.ui_hitboxes and self.ui_hitboxes['dev_skip_wave'].collidepoint(mouse_pos):
+            return "DEV_SKIP_WAVE"
+
         # Check surrender close button
         if self.showing_surrender and 'surrender_close' in self.ui_hitboxes and self.ui_hitboxes['surrender_close'].collidepoint(mouse_pos):
             return "SURRENDER_CLOSE"
@@ -1832,7 +1836,6 @@ class Game:
                                     available_mobs = self.get_available_mobs_for_wave()
                                     if (
                                         mob_index in available_mobs
-                                        and self.mobs_remaining_this_wave() > 0
                                         and self.current_branches >= self.mob_costs[mob_index]
                                     ):
                                         self.selected_mob_type = mob_index
@@ -1856,7 +1859,6 @@ class Game:
                                     available_mobs = self.get_available_mobs_for_wave()
                                     if (
                                         self.selected_mob_type in available_mobs
-                                        and self.mobs_remaining_this_wave() > 0
                                         and self.current_branches >= self.mob_costs[self.selected_mob_type]
                                     ):
                                         cost = self.mob_costs[self.selected_mob_type]
@@ -1868,6 +1870,8 @@ class Game:
                             elif ui_action == "SCROLL_RIGHT":
                                 # Navigate to next page
                                 self.scroll_page = (self.scroll_page + 1) % 5
+                            elif ui_action == "DEV_SKIP_WAVE":
+                                self._dev_skip_wave()
                             elif ui_action == "SETTINGS":
                                 # Show surrender screen
                                 self.showing_surrender = not self.showing_surrender
@@ -1888,6 +1892,8 @@ class Game:
                         if event.key == pygame.K_n:
                             if self.round_active and not self.edit_mode and len(self.mobs) == 0:
                                 self._end_round_advance_wave()
+                        if event.key == pygame.K_F9:
+                            self._dev_skip_wave()
                         if event.key == pygame.K_r:
                             if not self.round_active:
                                 self.reset_grid()
@@ -1919,7 +1925,6 @@ class Game:
                                 available_mobs = self.get_available_mobs_for_wave()
                                 if (
                                     self.selected_mob_type in available_mobs
-                                    and self.mobs_remaining_this_wave() > 0
                                     and self.current_branches >= self.mob_costs[self.selected_mob_type]
                                 ):
                                     cost = self.mob_costs[self.selected_mob_type]
@@ -1941,11 +1946,11 @@ class Game:
                 if self.game_active:
                     self.defeat()
             
-            # Wave ends when every mob for this wave was deployed and the field is clear
+            # Wave ends when the field is clear and branches cannot buy another mob
             if (
                 self.round_active
                 and len(self.mobs) == 0
-                and self.mobs_spawned_this_round >= self.mob_quota_this_wave
+                and not self._can_player_spawn_anything()
             ):
                 self._end_round_advance_wave()
 
