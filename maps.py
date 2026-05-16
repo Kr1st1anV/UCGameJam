@@ -270,9 +270,13 @@ class Maps:
 
     @staticmethod
     def level_for_wave(wave: int) -> int:
-        """Cycle playable maps as waves advance."""
-        levels = sorted(Maps().levels.keys())
-        return levels[(max(1, wave) - 1) % len(levels)]
+        """Wave N uses layout N (1–10 underground, 11–20 sunshine surface)."""
+        return max(1, min(int(wave), 20))
+
+    @staticmethod
+    def stage_for_wave(wave: int) -> str:
+        """Visual theme: waves 1–10 cave, 11–20 sunshine."""
+        return "cave" if int(wave) <= 10 else "sunshine"
 
     @staticmethod
     def branches_for_wave(wave: int) -> int:

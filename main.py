@@ -19,8 +19,35 @@ BUTTONS_DIR = os.path.join(os.path.dirname(__file__), 'buttons')
 MOBS_DIR = os.path.join(os.path.dirname(__file__), 'mobs')
 ASSETS_UI_DIR = os.path.join(os.path.dirname(__file__), 'assets', 'ui')
 ASSETS_MOBS_DIR = os.path.join(os.path.dirname(__file__), 'assets', 'mobs')
+ASSETS_BG_DIR = os.path.join(os.path.dirname(__file__), 'assets', 'bg')
 
 MAX_WAVES = 20
+CAVE_WAVE_MAX = 10
+STAGE_CAVE = "cave"
+STAGE_SUNSHINE = "sunshine"
+# Background art filenames (place cave files in bground/ or assets/bg/cave/)
+STAGE_BACKGROUNDS = {
+    STAGE_CAVE: ("cave_sky.png", "cave_island.png"),
+    STAGE_SUNSHINE: ("wbsky.png", "island.png"),
+}
+STAGE_UI_PLAY = {
+    STAGE_CAVE: "cave_UI_play.png",
+    STAGE_SUNSHINE: "UI_play.png",
+}
+STAGE_SETTINGS_PAGE = {
+    STAGE_CAVE: "cave_settingsmain.png",
+    STAGE_SUNSHINE: "settingsmain.png",
+}
+STAGE_BG_FALLBACK = STAGE_BACKGROUNDS[STAGE_SUNSHINE]
+SETTINGS_PAGE_SCALE = 0.8
+INGAME_SETTINGS_PAGE_POS = (250, 130)
+# Sunshine sky uses 0.7×0.75 on its source art; all skies scale to that display size.
+SKY_SCALE = (0.7, 0.75)
+ISLAND_SCALE = (1.0, 1.2)
+CURSOR_TOOL_SIZE = (40, 40)
+SHOVEL_CURSOR_SIZE = (46, 46)
+# Offset from centered blit so shovel tip lines up with the mouse hotspot (x, y up)
+SHOVEL_CURSOR_OFFSET = (0, -12)
 WAVE_COMBAT_SECONDS = 30
 TILE_DRAW_SCALE = 1.75  # larger isometric tiles (reference layout was 1.5)
 
@@ -321,16 +348,28 @@ class Game:
         self.showing_book = False
         self.scroll_page = 0  # Current page in script of evil (0-4 for 5 mobs)
         self.cached_mob_icons = {}  # Cache mob icons for spawn boxes
-        self.showing_surrender = False  # Surrender screen
+        self.showing_surrender = False
+        self.showing_ingame_settings = False
+        self.showing_ingame_instructions = False
+        self.showing_ingame_credits = False
+        self.cached_ui_by_stage: dict = {}
+        self.cached_settings_by_stage: dict = {}
+        self._ui_play_display_px = None
+        self._settings_page_display_px = None
+        self._ingame_settings_hitboxes: dict = {}
         self.debug_click_mode = False  # Demo build: keep console clean
 
         # Presentation / juice (hackathon polish)
         self.mission_briefing_active = False
         self.see_through_obstacles = False
+        self.current_stage = STAGE_CAVE
+        self._sky_display_px = None
+        self._island_display_px = None
         self._floating_text = []  # {text, x, y, vy, life, color}
         self._last_tower_sound_ms = 0
         self._feel_audio_ready = False
         self.sfx_volume_level = SFX_VOLUME_MAX
+        self.settings_volume_label = ""
         ########
         self.set_path = False
         self.rm_path = False
@@ -383,12 +422,225 @@ class Game:
         return pygame.image.load(path).convert_alpha()
 
     def load_world(self, name):
-        path = os.path.join(BGROUND_DIR, name)
+        path = self._resolve_bground_path(name)
         return pygame.image.load(path).convert_alpha()
+
+    def _resolve_bground_path(self, name: str, *, fallback: str | None = None) -> str:
+        """bground/ first, then assets/bg/ and assets/bg/cave/, then optional fallback name."""
+        candidates = [
+            os.path.join(BGROUND_DIR, name),
+            os.path.join(ASSETS_BG_DIR, name),
+            os.path.join(ASSETS_BG_DIR, "cave", name),
+        ]
+        for path in candidates:
+            if os.path.isfile(path):
+                return path
+        if fallback:
+            for path in (
+                os.path.join(BGROUND_DIR, fallback),
+                os.path.join(ASSETS_BG_DIR, fallback),
+            ):
+                if os.path.isfile(path):
+                    return path
+        return candidates[0]
+
+    def stage_for_wave(self, wave: int) -> str:
+        return Maps.stage_for_wave(wave)
+
+    def _ui_blocks_round_start(self) -> bool:
+        return (
+            self.showing_scroll
+            or self.showing_book
+            or self.showing_surrender
+            or self.showing_ingame_settings
+            or self.showing_ingame_instructions
+            or self.showing_ingame_credits
+        )
+
+    def _ingame_menu_open(self) -> bool:
+        return (
+            self.showing_ingame_settings
+            or self.showing_ingame_instructions
+            or self.showing_ingame_credits
+            or self.showing_surrender
+        )
+
+    def _can_start_wave_combat(self) -> bool:
+        return (
+            self.is_grid_valid(self.world_grid)
+            and not self.round_active
+            and self.round_ended
+            and not self._ui_blocks_round_start()
+            and not self._game_input_locked()
+        )
+
+    def _sky_display_size(self) -> tuple[int, int]:
+        """Target sky size from sunshine art (same on-screen footprint for every stage)."""
+        if self._sky_display_px is None:
+            ref_name = STAGE_BACKGROUNDS[STAGE_SUNSHINE][0]
+            ref = self.load_world(ref_name)
+            sx, sy = SKY_SCALE
+            self._sky_display_px = (
+                int(ref.get_width() * sx),
+                int(ref.get_height() * sy),
+            )
+        return self._sky_display_px
+
+    def _island_display_size(self) -> tuple[int, int]:
+        if self._island_display_px is None:
+            ref_name = STAGE_BACKGROUNDS[STAGE_SUNSHINE][1]
+            ref = self.load_world(ref_name)
+            sx, sy = ISLAND_SCALE
+            self._island_display_px = (
+                int(ref.get_width() * sx),
+                int(ref.get_height() * sy),
+            )
+        return self._island_display_px
+
+    def _scale_sky_to_display(self, surf: pygame.Surface) -> pygame.Surface:
+        return pygame.transform.scale(surf, self._sky_display_size())
+
+    def _scale_island_to_display(self, surf: pygame.Surface) -> pygame.Surface:
+        return pygame.transform.scale(surf, self._island_display_size())
+
+    def _apply_stage_visuals(self, stage: str) -> None:
+        """Swap sky + island (and cloud visibility) for cave vs sunshine."""
+        self.current_stage = stage
+        sky_name, island_name = STAGE_BACKGROUNDS.get(stage, STAGE_BG_FALLBACK)
+        fb_sky, fb_island = STAGE_BG_FALLBACK
+        try:
+            background_raw = self.load_world(sky_name)
+        except (pygame.error, FileNotFoundError):
+            background_raw = self.load_world(fb_sky)
+        try:
+            island_raw = self.load_world(island_name)
+        except (pygame.error, FileNotFoundError):
+            island_raw = self.load_world(fb_island)
+        self.cached_bg_image = self._scale_sky_to_display(background_raw)
+        self.cached_island_image = self._scale_island_to_display(island_raw)
+        if hasattr(self, "cached_ui_by_stage") and stage in self.cached_ui_by_stage:
+            self.cached_ui_image = self.cached_ui_by_stage[stage]
+        if stage == STAGE_CAVE:
+            self.active_clouds = []
+        elif stage == STAGE_SUNSHINE and hasattr(self, "cloud_images"):
+            if not self.active_clouds:
+                for _ in range(1):
+                    self.spawn_cloud(random.randint(0, 700))
     
+    def load_buttons(self, name: str) -> pygame.Surface:
+        path = os.path.join(BUTTONS_DIR, name)
+        return pygame.image.load(path).convert_alpha()
+
     def load_towers(self, name):
         path = os.path.join(TOWERS_DIR, name)
         return pygame.image.load(path).convert_alpha()
+
+    def _ui_play_display_size(self) -> tuple[int, int]:
+        if self._ui_play_display_px is None:
+            ref = self.load_world(STAGE_UI_PLAY[STAGE_SUNSHINE])
+            sx, sy = UI_PLAY_SCALE
+            self._ui_play_display_px = (
+                int(ref.get_width() * sx),
+                int(ref.get_height() * sy),
+            )
+        return self._ui_play_display_px
+
+    def _settings_page_display_size(self) -> tuple[int, int]:
+        if self._settings_page_display_px is None:
+            ref = self.load_buttons(STAGE_SETTINGS_PAGE[STAGE_SUNSHINE])
+            self._settings_page_display_px = (
+                int(ref.get_width() * SETTINGS_PAGE_SCALE),
+                int(ref.get_height() * SETTINGS_PAGE_SCALE),
+            )
+        return self._settings_page_display_px
+
+    def _scale_ui_play_image(self, surf: pygame.Surface) -> pygame.Surface:
+        return pygame.transform.scale(surf, self._ui_play_display_size())
+
+    def _scale_settings_page_image(self, surf: pygame.Surface) -> pygame.Surface:
+        return pygame.transform.scale(surf, self._settings_page_display_size())
+
+    def _load_all_stage_ui_caches(self) -> None:
+        for stage, ui_file in STAGE_UI_PLAY.items():
+            try:
+                raw = self.load_world(ui_file)
+            except (pygame.error, FileNotFoundError):
+                raw = self.load_world(STAGE_UI_PLAY[STAGE_SUNSHINE])
+            self.cached_ui_by_stage[stage] = self._scale_ui_play_image(raw)
+        for stage, page_file in STAGE_SETTINGS_PAGE.items():
+            try:
+                raw = self.load_buttons(page_file)
+            except (pygame.error, FileNotFoundError):
+                raw = self.load_buttons(STAGE_SETTINGS_PAGE[STAGE_SUNSHINE])
+            self.cached_settings_by_stage[stage] = self._scale_settings_page_image(raw)
+        if not hasattr(self, "cached_instr_page"):
+            instr_raw = self.load_buttons("instr_man.png")
+            self.cached_instr_page = pygame.transform.scale(
+                instr_raw,
+                self._settings_page_display_size(),
+            )
+
+    def _refresh_ingame_settings_hitboxes(self) -> None:
+        spx, spy = INGAME_SETTINGS_PAGE_POS
+        self._ingame_settings_hitboxes = {
+            "close": pygame.Rect(spx + 81, spy + 88, 21, 22).inflate(16, 14),
+            "sound_left": pygame.Rect(spx + 306, spy + 185, 20, 28).inflate(12, 10),
+            "sound_right": pygame.Rect(spx + 425, spy + 185, 20, 28).inflate(12, 10),
+            "surrender": pygame.Rect(spx + 80, spy + 248, 400, 55),
+        }
+        if self.current_stage == STAGE_CAVE:
+            self._ingame_settings_hitboxes["credits"] = pygame.Rect(spx + 80, spy + 195, 280, 42)
+        else:
+            self._ingame_settings_hitboxes["instructions"] = pygame.Rect(spx + 80, spy + 220, 400, 42)
+
+    def _draw_ingame_settings_overlay(self) -> None:
+        veil = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
+        veil.fill((8, 12, 28, 160))
+        self.surface.blit(veil, (0, 0))
+        page = self.cached_settings_by_stage.get(
+            self.current_stage,
+            self.cached_settings_by_stage.get(STAGE_SUNSHINE),
+        )
+        if page:
+            self.surface.blit(page, INGAME_SETTINGS_PAGE_POS)
+        if self.settings_volume_label:
+            label = self.cached_font_small.render(
+                self.settings_volume_label, True, HUD_TEXT_BROWN
+            )
+            lr = self._ingame_settings_hitboxes.get("sound_left")
+            rr = self._ingame_settings_hitboxes.get("sound_right")
+            if lr and rr:
+                cx = (lr.centerx + rr.centerx) // 2
+                cy = (lr.centery + rr.centery) // 2
+                self.surface.blit(label, label.get_rect(center=(cx, cy)))
+
+    def _draw_ingame_subpage_overlay(self, page_surf: pygame.Surface) -> None:
+        veil = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
+        veil.fill((8, 12, 28, 160))
+        self.surface.blit(veil, (0, 0))
+        pos = (
+            (self.width - page_surf.get_width()) // 2,
+            (self.height - page_surf.get_height()) // 2,
+        )
+        self.surface.blit(page_surf, pos)
+        close = pygame.Rect(pos[0] + 81, pos[1] + 88, 21, 22).inflate(16, 14)
+        self._ingame_subpage_close_rect = close
+
+    def _ingame_settings_click(self, mouse_pos) -> str | None:
+        hb = self._ingame_settings_hitboxes
+        if hb.get("close") and hb["close"].collidepoint(mouse_pos):
+            return "CLOSE"
+        if hb.get("sound_left") and hb["sound_left"].collidepoint(mouse_pos):
+            return "SOUND_DOWN"
+        if hb.get("sound_right") and hb["sound_right"].collidepoint(mouse_pos):
+            return "SOUND_UP"
+        if hb.get("instructions") and hb["instructions"].collidepoint(mouse_pos):
+            return "INSTRUCTIONS"
+        if hb.get("credits") and hb["credits"].collidepoint(mouse_pos):
+            return "CREDITS"
+        if hb.get("surrender") and hb["surrender"].collidepoint(mouse_pos):
+            return "SURRENDER"
+        return None
     
     def initiate_cutscenes(self):
         self.game_active = True
@@ -465,6 +717,9 @@ class Game:
         pygame.mouse.set_visible(True)
         self.showing_cutscene = False
         self.showing_surrender = False
+        self.showing_ingame_settings = False
+        self.showing_ingame_instructions = False
+        self.showing_ingame_credits = False
         self.showing_scroll = False
         self.showing_book = False
         self.mission_briefing_active = False
@@ -524,8 +779,9 @@ class Game:
             self._play_spawn_chirp()
 
     def _update_settings_volume_label(self) -> None:
+        self.settings_volume_label = str(self.sfx_volume_level)
         if hasattr(self, "start_screen"):
-            self.start_screen.set_settings_volume_label(str(self.sfx_volume_level))
+            self.start_screen.set_settings_volume_label(self.settings_volume_label)
 
     def _make_tone_sound(self, freq: float, duration_ms: int, volume: float):
         sr = 22050
@@ -668,6 +924,10 @@ class Game:
 
     def begin_wave_setup(self) -> None:
         """New wave: map, branch budget, and fresh tree HP (grows each wave)."""
+        stage = self.stage_for_wave(self.wave)
+        if stage != getattr(self, "current_stage", None):
+            self._apply_stage_visuals(stage)
+        self._refresh_ingame_settings_hitboxes()
         self.current_level_id = Maps.level_for_wave(self.wave)
         self.reset_grid(self.current_level_id)
         self.current_branches = Maps.branches_for_wave(self.wave)
@@ -842,20 +1102,12 @@ class Game:
     def initiate_cached_images(self):
         """Pre-load and cache all background images to avoid loading every frame"""
         try:
-            # Background images
-            background_raw = self.load_world("wbsky.png")
-            self.cached_bg_image = pygame.transform.scale(background_raw, (int(background_raw.get_width() * 0.7), int(background_raw.get_height() * 0.75)))
-            
-            island_raw = self.load_world("island.png")
-            self.cached_island_image = pygame.transform.scale(island_raw, (int(island_raw.get_width() * 1), int(island_raw.get_height() * 1.2)))
-            
-            ui_raw = self.load_world("UI_play.png")
-            sx, sy = UI_PLAY_SCALE
-            self.cached_ui_image = pygame.transform.scale(
-                ui_raw,
-                (int(ui_raw.get_width() * sx), int(ui_raw.get_height() * sy)),
-            )
-            
+            self._load_all_stage_ui_caches()
+            self.current_stage = self.stage_for_wave(self.wave)
+            self._apply_stage_visuals(self.current_stage)
+            self._refresh_ingame_settings_hitboxes()
+            self._update_settings_volume_label()
+
             tree_life_raw = self.load_world("tree_of_life.png")
             self.cached_tree_life_image = pygame.transform.scale(tree_life_raw, (int(tree_life_raw.get_width() * 1.5), int(tree_life_raw.get_height() * 1.5)))
             
@@ -884,51 +1136,31 @@ class Game:
             surrender_raw = pygame.image.load(os.path.join(ASSETS_UI_DIR, 'surrenderpage.png')).convert_alpha()
             self.cached_surrender_page = pygame.transform.scale(surrender_raw, (int(surrender_raw.get_width() * 0.8), int(surrender_raw.get_height() * 0.8)))
             
-            # Load hammer cursor images (for build mode)
+            # Load hammer / shovel cursor animations
             self.hammer_images = []
             hammer_dir = os.path.join(ASSETS_UI_DIR, 'hammer')
             if os.path.exists(hammer_dir):
                 hammer_files = sorted([f for f in os.listdir(hammer_dir) if f.endswith('.png')])
                 for hammer_file in hammer_files:
                     hammer_img = pygame.image.load(os.path.join(hammer_dir, hammer_file)).convert_alpha()
-                    # Scale hammer to reasonable cursor size
-                    self.hammer_images.append(pygame.transform.scale(hammer_img, (40, 40)))
-            
-            # Create pixel art style shovel cursor (for delete mode)
-            # Make it match the pixel art style of the game
-            shovel_surf = pygame.Surface((32, 32), pygame.SRCALPHA)
-            # Pixel art shovel - brown handle, gray metal head
-            # Handle (vertical brown rectangle)
-            for y in range(2, 18):
-                for x in range(14, 18):
-                    shovel_surf.set_at((x, y), (101, 67, 33))  # Brown handle
-            
-            # Shovel head (gray metal, angled)
-            # Top edge
-            for x in range(6, 22):
-                shovel_surf.set_at((x, 18), (128, 128, 128))
-            # Left edge
-            for y in range(18, 26):
-                shovel_surf.set_at((6, y), (128, 128, 128))
-            # Right edge (curved)
-            for y in range(18, 26):
-                shovel_surf.set_at((21, y), (128, 128, 128))
-            # Fill shovel head
-            for y in range(19, 25):
-                for x in range(7, 21):
-                    shovel_surf.set_at((x, y), (192, 192, 192))
-            # Shovel tip
-            for x in range(8, 20):
-                shovel_surf.set_at((x, 25), (160, 160, 160))
-            
-            # Scale up to match hammer size
-            self.shovel_image = pygame.transform.scale(shovel_surf, (40, 40))
-            
-            # Initialize cursor animation variables
+                    self.hammer_images.append(pygame.transform.scale(hammer_img, CURSOR_TOOL_SIZE))
+
+            self.shovel_images = []
+            shovel_dir = os.path.join(ASSETS_UI_DIR, 'shovel')
+            if os.path.exists(shovel_dir):
+                shovel_files = sorted([f for f in os.listdir(shovel_dir) if f.endswith('.png')])
+                for shovel_file in shovel_files:
+                    shovel_img = pygame.image.load(os.path.join(shovel_dir, shovel_file)).convert_alpha()
+                    self.shovel_images.append(pygame.transform.scale(shovel_img, SHOVEL_CURSOR_SIZE))
+
             self.cursor_animation_frame = 0
             self.cursor_animation_counter = 0
+            self.shovel_animation_counter = 0
+            self.shovel_animation_frame = 0
             self.hammer_animating = False
             self.hammer_animation_duration = 0
+            self.shovel_animating = False
+            self.shovel_animation_duration = 0
             self.tile_changed = False
             
             # Cache mob icons for spawn boxes - order: worm, butterfly, dragonfly, snail, beetle
@@ -965,17 +1197,13 @@ class Game:
 
     def _path_edit_locked(self) -> bool:
         """True while overlays block hammer/shovel path editing."""
-        return (
-            self._game_input_locked()
-            or self.showing_scroll
-            or self.showing_book
-            or self.showing_surrender
-        )
+        return self._game_input_locked() or self.showing_scroll or self.showing_book or self._ingame_menu_open()
 
     def _clear_path_editing(self) -> None:
         self.set_path = False
         self.rm_path = False
         self.hammer_animating = False
+        self.shovel_animating = False
 
     def _is_v_path_tile(self, tile_val) -> bool:
         """Walkable path tiles (not towers or bushes)."""
@@ -1205,8 +1433,8 @@ class Game:
                                 self.world_grid[i][j] = 0
                             self.paths_remaining += 1
                             self.tile_changed = True
-                            self.hammer_animating = True
-                            self.hammer_animation_duration = 0.5
+                            self.shovel_animating = True
+                            self.shovel_animation_duration = 0.5
                 else:
                     self.highlight = False
                 
@@ -1612,6 +1840,18 @@ class Game:
                 surrender_x, surrender_y
             )
 
+        if self.showing_ingame_settings:
+            self._draw_ingame_settings_overlay()
+        elif self.showing_ingame_instructions and hasattr(self, "cached_instr_page"):
+            self._draw_ingame_subpage_overlay(self.cached_instr_page)
+        elif self.showing_ingame_credits:
+            page = self.cached_settings_by_stage.get(
+                self.current_stage,
+                self.cached_settings_by_stage.get(STAGE_SUNSHINE),
+            )
+            if page:
+                self._draw_ingame_subpage_overlay(page)
+
         self._draw_ui_debug_outlines()
 
         
@@ -1667,6 +1907,8 @@ class Game:
                 self._draw_mob_slot_frame(slot_rect, selected=False)
     
     def ui_check_click(self, mouse_pos):
+        if self.showing_ingame_settings or self.showing_ingame_instructions or self.showing_ingame_credits:
+            return None
         if self.showing_surrender:
             if 'surrender_back' in self.ui_hitboxes and self.ui_hitboxes['surrender_back'].collidepoint(mouse_pos):
                 return "SURRENDER_BACK"
@@ -1886,10 +2128,11 @@ class Game:
             else:
                 # Fallback: load and scale on the fly if cache not initialized
                 background_raw = self.load_world("wbsky.png")
-                bg_img = pygame.transform.scale(background_raw, (int(background_raw.get_width() * 0.7), int(background_raw.get_height() * 0.75)))
+                bg_img = self._scale_sky_to_display(background_raw)
                 self.surface.blit(bg_img, (0, 0))
             
-            self.update_and_draw_clouds()
+            if getattr(self, "current_stage", STAGE_SUNSHINE) == STAGE_SUNSHINE:
+                self.update_and_draw_clouds()
             
             if hasattr(self, 'cached_island_image'):
                 self.surface.blit(self.cached_island_image, (-100, 0))
@@ -1901,9 +2144,8 @@ class Game:
             if hasattr(self, 'cached_ui_image'):
                 self.surface.blit(self.cached_ui_image, (0, 0))
             else:
-                ui_raw = self.load_world("UI_play.png")
-                ui_img = pygame.transform.scale(ui_raw, (int(ui_raw.get_width() * 0.7), int(ui_raw.get_height() * 0.75)))
-                self.surface.blit(ui_img, (0, 0))
+                ui_raw = self.load_world(STAGE_UI_PLAY.get(self.current_stage, "UI_play.png"))
+                self.surface.blit(self._scale_ui_play_image(ui_raw), (0, 0))
             
             self.map_grid()
             
@@ -1987,31 +2229,43 @@ class Game:
                 # Hide default cursor in edit mode
                 pygame.mouse.set_visible(False)
                 
-                # Update hammer animation timer
+                delta_time = self.clock.get_time() / 1000.0
                 if self.hammer_animating:
-                    # Use delta time from clock (get_time returns milliseconds since last tick)
-                    delta_time = self.clock.get_time() / 1000.0  # Convert to seconds
                     self.hammer_animation_duration -= delta_time
                     if self.hammer_animation_duration <= 0:
                         self.hammer_animating = False
                         self.cursor_animation_counter = 0
                         self.cursor_animation_frame = 0
-                
+                if self.shovel_animating:
+                    self.shovel_animation_duration -= delta_time
+                    if self.shovel_animation_duration <= 0:
+                        self.shovel_animating = False
+                        self.shovel_animation_counter = 0
+                        self.shovel_animation_frame = 0
+
                 if self.build and self.hammer_images:
-                    # Animate hammer only when tile changes
                     if self.hammer_animating:
-                        self.cursor_animation_counter += 0.3  # Faster animation when active
+                        self.cursor_animation_counter += 0.3
                         self.cursor_animation_frame = int(self.cursor_animation_counter) % len(self.hammer_images)
                     else:
-                        # Show first frame when not animating
                         self.cursor_animation_frame = 0
-                    
                     cursor_img = self.hammer_images[self.cursor_animation_frame]
-                    # Draw at mouse position with offset to center
                     self.surface.blit(cursor_img, (self.x - cursor_img.get_width() // 2, self.y - cursor_img.get_height() // 2))
-                elif not self.build and self.shovel_image:
-                    # Show shovel when deleting paths
-                    self.surface.blit(self.shovel_image, (self.x - self.shovel_image.get_width() // 2, self.y - self.shovel_image.get_height() // 2))
+                elif not self.build and self.shovel_images:
+                    if self.shovel_animating:
+                        self.shovel_animation_counter += 0.3
+                        self.shovel_animation_frame = int(self.shovel_animation_counter) % len(self.shovel_images)
+                    else:
+                        self.shovel_animation_frame = 0
+                    cursor_img = self.shovel_images[self.shovel_animation_frame]
+                    ox, oy = SHOVEL_CURSOR_OFFSET
+                    self.surface.blit(
+                        cursor_img,
+                        (
+                            self.x - cursor_img.get_width() // 2 + ox,
+                            self.y - cursor_img.get_height() // 2 + oy,
+                        ),
+                    )
             else:
                 pygame.mouse.set_visible(True)
             
@@ -2155,6 +2409,43 @@ class Game:
                             self.mission_briefing_active = False
                             continue
                         continue
+                    if self.showing_ingame_instructions or self.showing_ingame_credits:
+                        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                            close = getattr(self, "_ingame_subpage_close_rect", None)
+                            if close is None or close.collidepoint(event.pos):
+                                self.showing_ingame_instructions = False
+                                self.showing_ingame_credits = False
+                        continue
+                    if self.showing_ingame_settings:
+                        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                            action = self._ingame_settings_click(event.pos)
+                            if action == "CLOSE":
+                                self.showing_ingame_settings = False
+                            elif action == "SOUND_DOWN":
+                                self._change_sfx_volume(-1)
+                                self._update_settings_volume_label()
+                            elif action == "SOUND_UP":
+                                self._change_sfx_volume(1)
+                                self._update_settings_volume_label()
+                            elif action == "INSTRUCTIONS":
+                                self.showing_ingame_instructions = True
+                            elif action == "CREDITS":
+                                self.showing_ingame_credits = True
+                            elif action == "SURRENDER":
+                                self.showing_ingame_settings = False
+                                self.showing_surrender = True
+                                self._clear_path_editing()
+                        continue
+                    if self.showing_surrender:
+                        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                            ui_action = self.ui_check_click(event.pos)
+                            if ui_action in ("SURRENDER_BACK", "SURRENDER_NO"):
+                                self.showing_surrender = False
+                                self._clear_path_editing()
+                            elif ui_action == "SURRENDER_YES":
+                                self.showing_surrender = False
+                                self.return_to_main_menu()
+                        continue
                     if event.type == pygame.MOUSEBUTTONDOWN: # 1 is left, 3 is right
                         if event.button == 1:
                             ui_action = self.ui_check_click(event.pos)
@@ -2207,14 +2498,10 @@ class Game:
                             elif ui_action == "DEV_SKIP_WAVE":
                                 self._dev_skip_wave()
                             elif ui_action == "SETTINGS":
-                                self.showing_surrender = not self.showing_surrender
+                                self.showing_ingame_settings = True
+                                self._refresh_ingame_settings_hitboxes()
+                                self._update_settings_volume_label()
                                 self._clear_path_editing()
-                            elif ui_action in ("SURRENDER_BACK", "SURRENDER_NO"):
-                                self.showing_surrender = False
-                                self._clear_path_editing()
-                            elif ui_action == "SURRENDER_YES":
-                                self.showing_surrender = False
-                                self.return_to_main_menu()
 ################################################################################################################
                             elif not self._path_edit_locked():
                                 if self.build:
@@ -2248,8 +2535,7 @@ class Game:
                         if event.key == pygame.K_5 and self.is_mob_unlocked(4):
                             self.selected_mob_type = 4
                         if event.key in (pygame.K_SPACE, pygame.K_RETURN):
-                            # If round hasn't started, start the round
-                            if self.is_grid_valid(self.world_grid) and not self.round_active and self.round_ended:
+                            if self._can_start_wave_combat():
                                 self._start_wave_combat()
                             elif self.round_active and not self.edit_mode:
                                 available_mobs = self.get_available_mobs_for_wave()
