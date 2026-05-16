@@ -140,6 +140,18 @@ class Mob:
             self.animation_counter = 0
             self.current_frame = (self.current_frame + 1) % len(self.mobframes)
 
+    def advance_animation(self):
+        """Advance only the animation frames without moving the mob."""
+        self.animation_counter += self.animaton_speed
+        if self.animation_counter >= 1:
+            self.animation_counter = 0
+            self.current_frame = (self.current_frame + 1) % len(self.mobframes)
+
+    def reset_animation(self):
+        """Reset the mob animation to the first frame."""
+        self.current_frame = 0
+        self.animation_counter = 0
+
     def draw(self, surface):
         current_sprite = self.mobframes[self.current_frame]
         
@@ -150,14 +162,15 @@ class Mob:
             else:
                 current_sprite = self.mobframes_right[self.current_frame]
 
-        sprite_rect = current_sprite.get_rect(center=(self.pos.x, self.pos.y))
+        # Offset mob slightly downward to align with shadows
+        sprite_rect = current_sprite.get_rect(center=(self.pos.x, self.pos.y + 8))
         surface.blit(current_sprite, sprite_rect)
 
         if self.health > 0:
             bar_width = 40
             health_pct = self.health / self.mob_health_values[self.randmob]
-            pygame.draw.rect(surface, (255, 0, 0), (self.pos.x - 20, self.pos.y - 40, bar_width, 5))
-            pygame.draw.rect(surface, (0, 255, 0), (self.pos.x - 20, self.pos.y - 40, bar_width * health_pct, 5))
+            pygame.draw.rect(surface, (255, 0, 0), (self.pos.x - 20, self.pos.y - 32, bar_width, 5))
+            pygame.draw.rect(surface, (0, 255, 0), (self.pos.x - 20, self.pos.y - 32, bar_width * health_pct, 5))
 
 class Game:
 
@@ -488,6 +501,12 @@ class Game:
         self.edit_mode = True
         self.wave += 1
         pygame.time.set_timer(self.SPAWN_MOB_EVENT, 0)
+        for mob in self.mobs:
+            mob.reset_animation()
+        # Reset all towers to idle state
+        for tower_key in self.tower_states:
+            self.tower_states[tower_key]["status"] = "idle"
+            self.tower_states[tower_key]["frame"] = 0
 
     def initiate_cached_images(self):
         """Pre-load and cache all background images to avoid loading every frame"""
@@ -981,7 +1000,23 @@ class Game:
     
 
     # Tower Mechanics
+    def update_tower_animations(self):
+        """Update tower idle animations without combat logic."""
+        for tower_key in self.tower_states:
+            state = self.tower_states[tower_key]["status"]
+            # For towers, we need to know the tower type
+            # Find which tower this key belongs to
+            i, j = tower_key
+            tile = self.world_grid[i][j] if i < GRID_SIZE and j < GRID_SIZE else None
+            if tile in ["b2", "l1"]:
+                t_type = "bee" if tile == "b2" else "ladybug"
+                # Always animate idle towers
+                self.tower_states[tower_key]["frame"] += 0.15
+                if self.tower_states[tower_key]["frame"] >= len(self.tower_data[t_type][state]):
+                    self.tower_states[tower_key]["frame"] = 0
+
     def handle_tower_logic(self):
+        """Handle tower combat logic only (no animation)."""
         now = pygame.time.get_ticks()
         stats = {"b2": [150, 5, 1000], "l1": [120, 3, 800]} 
         
@@ -997,7 +1032,6 @@ class Game:
                     tower_key = (i, j)
                     
                     if tower_key not in self.tower_states:
-                        # Added 'flip': False to the initial state
                         self.tower_states[tower_key] = {"last_atk": 0, "frame": 0, "status": "idle", "flip": False}
 
                     t_pos = pygame.Vector2(pivot_x + (j - i) * half_w, pivot_y + (j + i) * half_h - (h * 1.2))
@@ -1006,13 +1040,11 @@ class Game:
                     if in_range:
                         target = max(in_range, key=lambda m: m.target_idx)
                         
-                        # --- NEW TRACKING LOGIC ---
-                        # If mob's x is less than tower's x, it's on the left
+                        # Track mob direction for flipping
                         if target.pos.x < t_pos.x:
                             self.tower_states[tower_key]["flip"] = False
                         else:
                             self.tower_states[tower_key]["flip"] = True
-                        # --------------------------
 
                         if now - self.tower_states[tower_key]["last_atk"] > stats[tile][2]:
                             target.health -= stats[tile][1]
@@ -1020,16 +1052,7 @@ class Game:
                             self.tower_states[tower_key]["last_atk"] = now
                             self.tower_states[tower_key]["status"] = "attack"
                             self.tower_states[tower_key]["frame"] = 0
-                    
-                    # Update animation frame
-                    state = self.tower_states[tower_key]["status"]
-                    self.tower_states[tower_key]["frame"] += 0.15
-                    if self.tower_states[tower_key]["frame"] >= len(self.tower_data[t_type][state]):
-                        self.tower_states[tower_key]["frame"] = 0
-                        if state == "attack":
-                            self.tower_states[tower_key]["status"] = "idle"
-                            # pygame.draw.line(self.surface, (255, 255, 0), tower_pos, target_mob.pos, 2)
-    
+
     def draw_UI(self) -> None: 
         # Show surrender screen if active
         if self.showing_surrender:
@@ -1520,7 +1543,21 @@ class Game:
                     })
 
                 self.handle_tower_logic()
+                self.handle_tower_logic()
 
+            else:
+                # When the round is not active, keep mobs on their first frame
+                # so they look like the initial spawn pose instead of frozen mid-air.
+                for mob in self.mobs:
+                    layer_queue.append({
+                        'z': mob.pos.y,
+                        'type': 'mob',
+                        'obj': mob
+                    })
+            
+            # Always animate towers every frame, regardless of round state
+            self.update_tower_animations()
+            
             # Sorts by furthest from screen to closest to screen
             layer_queue.sort(key=lambda item: item['z'])
 
