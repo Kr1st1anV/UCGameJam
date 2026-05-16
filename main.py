@@ -21,7 +21,14 @@ ASSETS_UI_DIR = os.path.join(os.path.dirname(__file__), 'assets', 'ui')
 ASSETS_MOBS_DIR = os.path.join(os.path.dirname(__file__), 'assets', 'mobs')
 
 MAX_WAVES = 20
+WAVE_COMBAT_SECONDS = 30
 TILE_DRAW_SCALE = 1.75  # larger isometric tiles (reference layout was 1.5)
+
+# Right-side HUD stack (aligned over branches + clock art on UI_play.png)
+HUD_WAVE_POS = (700, 8)
+HUD_TILES_POS = (700, 36)
+HUD_BRANCHES_POS = (735, 64)
+HUD_TIMER_POS = (742, 92)
 
 TREE_TAUNTS = [
     "The oak laughs in mulch.",
@@ -256,6 +263,8 @@ class Game:
         self.last_wave = 0
         self.last_branches = -1
         self.last_active_mobs = -1
+        self.wave_deadline_ms = None
+        self.last_timer_second = -1
         self.last_paths_remaining = -1        
 
     def x_transform(self, x, w, h):
@@ -446,8 +455,8 @@ class Game:
         self.surface.blit(veil, (0, 0))
         title = self.cached_font_large.render("You are the infestation.", True, (255, 245, 200))
         sub = self.cached_font_medium.render("Drain the Tree of Life. Towers are not on your side.", True, (230, 230, 240))
-        c1 = self.cached_font_small.render("Route tiles from spawn to the tree. SPACE starts the assault.", True, (200, 210, 255))
-        c2 = self.cached_font_small.render("Spend branches to buy bugs during the wave. Drain the tree's HP.", True, (200, 210, 255))
+        c1 = self.cached_font_small.render("Route tiles spawn → tree. SPACE starts a 30-second assault.", True, (200, 210, 255))
+        c2 = self.cached_font_small.render("Spend branches to buy bugs before time runs out.", True, (200, 210, 255))
         c3 = self.cached_font_small.render("N = next wave when the field is clear. Click to continue.", True, (255, 220, 120))
         block_w = max(title.get_width(), sub.get_width(), c1.get_width(), c2.get_width(), c3.get_width()) + 48
         block_h = title.get_height() + sub.get_height() + c1.get_height() + c2.get_height() + c3.get_height() + 50
@@ -496,8 +505,38 @@ class Game:
         self.edit_mode = True
         self.last_wave = -1
         self.last_branches = -1
+        self.wave_deadline_ms = None
+        self.last_timer_second = -1
         if hasattr(self, 'cached_font_large'):
             self._refresh_wave_and_branch_hud()
+
+    def _start_wave_combat(self) -> None:
+        """Begin the timed combat phase for this wave."""
+        self.edit_mode = False
+        self.round_active = True
+        self.round_ended = False
+        now = pygame.time.get_ticks()
+        self.wave_deadline_ms = now + WAVE_COMBAT_SECONDS * 1000
+        self.last_timer_second = -1
+
+    def _wave_time_remaining_seconds(self) -> int:
+        if self.wave_deadline_ms is None:
+            return WAVE_COMBAT_SECONDS
+        remaining_ms = self.wave_deadline_ms - pygame.time.get_ticks()
+        return max(0, int((remaining_ms + 999) // 1000))
+
+    def _draw_wave_timer(self) -> None:
+        if not self.round_active or self.edit_mode or self.wave_deadline_ms is None:
+            return
+        sec = self._wave_time_remaining_seconds()
+        if sec != self.last_timer_second:
+            color = (200, 40, 30) if sec <= 10 else (30, 50, 30)
+            self.cached_text_surfaces['timer'] = self.cached_font_large.render(
+                f"{sec}s", True, color
+            )
+            self.last_timer_second = sec
+        if 'timer' in self.cached_text_surfaces:
+            self.surface.blit(self.cached_text_surfaces['timer'], HUD_TIMER_POS)
 
     def _spawn_mob_on_path(self, mob_index: int) -> bool:
         """Spawn one mob if the path is valid and the player can afford it."""
@@ -529,6 +568,7 @@ class Game:
 
     def _end_round_advance_wave(self) -> None:
         self.round_active = False
+        self.wave_deadline_ms = None
         self.wave += 1
         for mob in self.mobs:
             mob.reset_animation()
@@ -1189,6 +1229,16 @@ class Game:
         ):
             self._refresh_wave_and_branch_hud()
 
+        if self.last_paths_remaining != self.paths_remaining:
+            self.cached_text_surfaces['tiles'] = self.cached_font_medium.render(
+                f'Tiles: {self.paths_remaining}', True, (0, 0, 0)
+            )
+            self.last_paths_remaining = self.paths_remaining
+        elif 'tiles' not in self.cached_text_surfaces:
+            self.cached_text_surfaces['tiles'] = self.cached_font_medium.render(
+                f'Tiles: {self.paths_remaining}', True, (0, 0, 0)
+            )
+
         active = len(self.mobs)
         if self.last_active_mobs != active:
             self.cached_text_surfaces['units'] = self.cached_font_large.render(
@@ -1200,8 +1250,10 @@ class Game:
                 f'On field: {active}', True, (0, 0, 0)
             )
 
-        self.surface.blit(self.cached_text_surfaces['wave'], (50, 70))
-        self.surface.blit(self.cached_text_surfaces['branches'], (735, 45))
+        self.surface.blit(self.cached_text_surfaces['wave'], HUD_WAVE_POS)
+        self.surface.blit(self.cached_text_surfaces['tiles'], HUD_TILES_POS)
+        self.surface.blit(self.cached_text_surfaces['branches'], HUD_BRANCHES_POS)
+        self._draw_wave_timer()
         self.surface.blit(self.cached_text_surfaces['units'], (1130, 550))
 
         
@@ -1617,16 +1669,6 @@ class Game:
                 elif item['type'] == 'mob':
                     item['obj'].draw(self.surface)
 
-            # Cache text rendering for tiles remaining - only re-render if value changed
-            if self.last_paths_remaining != self.paths_remaining:
-                self.cached_text_surfaces['tiles'] = self.cached_font_medium.render(f'Tiles Remaining: {self.paths_remaining}', True, (0, 0, 0))
-                self.last_paths_remaining = self.paths_remaining
-            
-            if 'tiles' not in self.cached_text_surfaces:
-                self.cached_text_surfaces['tiles'] = self.cached_font_medium.render(f'Tiles Remaining: {self.paths_remaining}', True, (0, 0, 0))
-            
-            self.surface.blit(self.cached_text_surfaces['tiles'], (40, 120))
-            
             self.draw_UI()
             self.draw_mob_purchase_ui()
             
@@ -1918,9 +1960,7 @@ class Game:
                         if event.key in (pygame.K_SPACE, pygame.K_RETURN):
                             # If round hasn't started, start the round
                             if self.is_grid_valid(self.world_grid) and not self.round_active and self.round_ended:
-                                self.edit_mode = False
-                                self.round_active = True
-                                self.round_ended = False
+                                self._start_wave_combat()
                             elif self.round_active and not self.edit_mode:
                                 available_mobs = self.get_available_mobs_for_wave()
                                 if (
@@ -1946,8 +1986,16 @@ class Game:
                 if self.game_active:
                     self.defeat()
             
-            # Wave ends when the field is clear and branches cannot buy another mob
+            # Timed wave: 30 seconds of combat then advance (or early end if spent out)
             if (
+                self.round_active
+                and not self.edit_mode
+                and self.wave_deadline_ms is not None
+                and pygame.time.get_ticks() >= self.wave_deadline_ms
+            ):
+                self.mobs = []
+                self._end_round_advance_wave()
+            elif (
                 self.round_active
                 and len(self.mobs) == 0
                 and not self._can_player_spawn_anything()
