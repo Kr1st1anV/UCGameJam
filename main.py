@@ -71,6 +71,11 @@ MOB_GRID_SLOT_W = 56
 MOB_GRID_SLOT_H = 56
 SCRIPT_OF_EVIL_PAGE_COUNT = 5  # worm → beetle scroll pages
 SFX_VOLUME_MAX = 11
+DEBUG_UI_OUTLINES = True
+# Surrender popup (coords relative to scaled surrenderpage blit top-left, scale 0.8)
+SURRENDER_HITBACK = pygame.Rect(69, 67, 21, 22)
+SURRENDER_HIT_NO = pygame.Rect(95, 148, 130, 58)
+SURRENDER_HIT_YES = pygame.Rect(238, 148, 175, 58)
 # Slot center (x, y) per cell, row-major — tweak Y to move the whole grid up/down
 MOB_GRID_CENTERS = (
     (735, 340), (812, 340), (889, 340),
@@ -375,6 +380,22 @@ class Game:
             pygame.mouse.set_visible(True)
             # Load defeat cutscene and return to main menu when finished
             self.load_cutscene('defeat', return_to_start=True)
+
+    def return_to_main_menu(self) -> None:
+        """Return to the start screen without playing a cutscene."""
+        pygame.mouse.set_visible(True)
+        self.showing_cutscene = False
+        self.showing_surrender = False
+        self.showing_scroll = False
+        self.showing_book = False
+        self.mission_briefing_active = False
+        self.showing_settings_screen = False
+        self.showing_instructions_scene = False
+        self.game_active = True
+        self.showing_start_screen = True
+        self.wave = 1
+        self.begin_wave_setup()
+        self.tower_states = {}
     
     def initiate_tree_health_bars(self):
         self.health_frames = []
@@ -507,12 +528,12 @@ class Game:
         veil.fill((8, 12, 28, 210))
         self.surface.blit(veil, (0, 0))
         title = self.cached_font_large.render("You are the infestation.", True, (255, 245, 200))
-        sub = self.cached_font_medium.render("Drain the Tree of Life. Towers are not on your side.", True, (230, 230, 240))
-        c1 = self.cached_font_small.render("Route tiles spawn → tree. SPACE starts a 30-second assault.", True, (200, 210, 255))
+        sub = self.cached_font_medium.render("Drain the Tree of Life. Be careful of where you step...", True, (230, 230, 240))
+        c1 = self.cached_font_small.render("Build tiles spawn to the tree. SPACE starts a 30-second assault.", True, (200, 210, 255))
         c2 = self.cached_font_small.render("Spend branches to buy bugs before time runs out.", True, (200, 210, 255))
-        c3 = self.cached_font_small.render("Kill the tree before the timer hits zero — or you lose.", True, (255, 220, 120))
+        c3 = self.cached_font_small.render("Kill the tree before the timer hits zero!", True, (255, 220, 120))
         block_w = max(title.get_width(), sub.get_width(), c1.get_width(), c2.get_width(), c3.get_width()) + 48
-        block_h = title.get_height() + sub.get_height() + c1.get_height() + c2.get_height() + c3.get_height() + 50
+        block_h = title.get_height() + sub.get_height() + c1.get_height() + c2.get_height() + c3.get_height() + 70
         bx = (self.width - block_w) // 2
         by = (self.height - block_h) // 2
         panel = pygame.Surface((block_w, block_h), pygame.SRCALPHA)
@@ -527,7 +548,7 @@ class Game:
         self.surface.blit(c1, (bx + 24, y))
         y += c1.get_height() + 6
         self.surface.blit(c2, (bx + 24, y))
-        y += c2.get_height() + 18
+        y += c2.get_height() + 8
         self.surface.blit(c3, (bx + 24, y))
 
     def get_available_mobs_for_wave(self) -> list[int]:
@@ -652,8 +673,9 @@ class Game:
             and self.wave_deadline_ms is not None
         )
         color = (200, 40, 30) if in_combat and sec <= 10 else (30, 50, 30)
+        unit = "sec"
         self.cached_text_surfaces['timer'] = self.cached_font_large.render(
-            str(sec), True, color
+            f"{sec} {unit}", True, color
         )
         self.last_timer_second = sec
 
@@ -1303,18 +1325,22 @@ class Game:
                             self.tower_states[tower_key]["status"] = "attack"
                             self.tower_states[tower_key]["frame"] = 0
 
-    def draw_UI(self) -> None: 
-        # Show surrender screen if active
-        if self.showing_surrender:
-            if hasattr(self, 'cached_surrender_page'):
-                # Center the surrender page on screen
-                surrender_x = (self.width - self.cached_surrender_page.get_width()) // 2
-                surrender_y = (self.height - self.cached_surrender_page.get_height()) // 2
-                self.surface.blit(self.cached_surrender_page, (surrender_x, surrender_y))
-                # Add close button hitbox (you may need to adjust this based on the surrender page design)
-                self.ui_hitboxes['surrender_close'] = pygame.Rect(surrender_x + 200, surrender_y + 300, 100, 50)
-        
-        # Use cached images instead of loading every frame
+    def _draw_ui_debug_outlines(self) -> None:
+        if not DEBUG_UI_OUTLINES:
+            return
+        for rect in self.ui_hitboxes.values():
+            pygame.draw.rect(self.surface, (255, 0, 0), rect, 2)
+
+    def _surrender_panel_pos(self) -> tuple[int, int]:
+        if not hasattr(self, 'cached_surrender_page'):
+            return (0, 0)
+        x = (self.width - self.cached_surrender_page.get_width()) // 2
+        y = (self.height - self.cached_surrender_page.get_height()) // 2
+        return x, y
+
+    def draw_UI(self) -> None:
+        self.ui_hitboxes = {}
+
         if self.showing_scroll:
             # Show the scroll for the current page (script of evil navigation)
             if self.scroll_page in self.cached_scrolls:
@@ -1347,10 +1373,8 @@ class Game:
         # Calculated: x=701, y=554, width=224, height=61
         self.ui_hitboxes['book_of_life'] = pygame.Rect(701, 554, 224, 61)
         
-        # Settings button - coordinates from user clicks
-        # Top-left: (849, 692), Bottom-right: (945, 709)
-        # Calculated: x=849, y=692, width=96, height=17
-        self.ui_hitboxes['settings'] = pygame.Rect(849, 692, 96, 17)
+        # Settings button (slightly larger than baked UI label for easier clicks)
+        self.ui_hitboxes['settings'] = pygame.Rect(835, 685, 120, 28)
 
         # Dev-only: unlabeled skip control (top-left corner, no in-game label)
         dev_skip_rect = pygame.Rect(6, 6, 16, 16)
@@ -1406,6 +1430,21 @@ class Game:
         self._draw_hud_branch_and_timer()
         self.surface.blit(self.cached_text_surfaces['units'], (1130, 550))
 
+        if self.showing_surrender and hasattr(self, 'cached_surrender_page'):
+            surrender_x, surrender_y = self._surrender_panel_pos()
+            self.surface.blit(self.cached_surrender_page, (surrender_x, surrender_y))
+            self.ui_hitboxes['surrender_back'] = SURRENDER_HITBACK.move(
+                surrender_x, surrender_y
+            ).inflate(16, 14)
+            self.ui_hitboxes['surrender_no'] = SURRENDER_HIT_NO.move(
+                surrender_x, surrender_y
+            )
+            self.ui_hitboxes['surrender_yes'] = SURRENDER_HIT_YES.move(
+                surrender_x, surrender_y
+            )
+
+        self._draw_ui_debug_outlines()
+
         
         # self.settings = self.load_world('settings.png')
         # self.settings = pygame.transform.scale(self.settings, (int(self.settings.get_width() * 0.7), int(self.settings.get_height() * 0.7)))
@@ -1459,24 +1498,30 @@ class Game:
                 self._draw_mob_slot_frame(slot_rect, selected=False)
     
     def ui_check_click(self, mouse_pos):
+        if self.showing_surrender:
+            if 'surrender_back' in self.ui_hitboxes and self.ui_hitboxes['surrender_back'].collidepoint(mouse_pos):
+                return "SURRENDER_BACK"
+            if 'surrender_no' in self.ui_hitboxes and self.ui_hitboxes['surrender_no'].collidepoint(mouse_pos):
+                return "SURRENDER_NO"
+            if 'surrender_yes' in self.ui_hitboxes and self.ui_hitboxes['surrender_yes'].collidepoint(mouse_pos):
+                return "SURRENDER_YES"
+            return None
+
         if 'dev_skip_wave' in self.ui_hitboxes and self.ui_hitboxes['dev_skip_wave'].collidepoint(mouse_pos):
             return "DEV_SKIP_WAVE"
 
-        # Check surrender close button
-        if self.showing_surrender and 'surrender_close' in self.ui_hitboxes and self.ui_hitboxes['surrender_close'].collidepoint(mouse_pos):
-            return "SURRENDER_CLOSE"
-        
         # Check spawn box clicks (2×3 mob grid)
         for i in range(5):  # 5 mob types
             box_key = f'spawn_box_{i}'
             if box_key in self.ui_hitboxes and self.ui_hitboxes[box_key].collidepoint(mouse_pos):
                 return f"SPAWN_BOX_{i}"
         
-        # Check scroll page navigation
-        if 'scroll_left' in self.ui_hitboxes and self.ui_hitboxes['scroll_left'].collidepoint(mouse_pos):
-            return "SCROLL_LEFT"
-        if 'scroll_right' in self.ui_hitboxes and self.ui_hitboxes['scroll_right'].collidepoint(mouse_pos):
-            return "SCROLL_RIGHT"
+        # Check scroll page navigation (only while script of evil is open)
+        if self.showing_scroll:
+            if 'scroll_left' in self.ui_hitboxes and self.ui_hitboxes['scroll_left'].collidepoint(mouse_pos):
+                return "SCROLL_LEFT"
+            if 'scroll_right' in self.ui_hitboxes and self.ui_hitboxes['scroll_right'].collidepoint(mouse_pos):
+                return "SCROLL_RIGHT"
         
         # Check settings button
         if 'settings' in self.ui_hitboxes and self.ui_hitboxes['settings'].collidepoint(mouse_pos):
@@ -1926,8 +1971,6 @@ class Game:
                                 # Start the game normally
                                 self.showing_start_screen = False
                                 self.mission_briefing_active = True
-                            if action == "TUTORIAL":
-                                self.showing_instructions_scene = True
                             if action == "SETTINGS":
                                 self.showing_settings_screen = True
                         elif self.showing_instructions_scene:
@@ -2012,11 +2055,12 @@ class Game:
                             elif ui_action == "DEV_SKIP_WAVE":
                                 self._dev_skip_wave()
                             elif ui_action == "SETTINGS":
-                                # Show surrender screen
                                 self.showing_surrender = not self.showing_surrender
-                            elif ui_action == "SURRENDER_CLOSE":
-                                # Close surrender screen
+                            elif ui_action in ("SURRENDER_BACK", "SURRENDER_NO"):
                                 self.showing_surrender = False
+                            elif ui_action == "SURRENDER_YES":
+                                self.showing_surrender = False
+                                self.return_to_main_menu()
 ################################################################################################################
                             else:
                                 if self.build:

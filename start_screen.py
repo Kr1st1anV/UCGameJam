@@ -8,6 +8,7 @@ import random
 
 DEFAULT_WIDTH   = 978
 DEFAULT_HEIGHT  = 750
+DEBUG_UI_OUTLINES = True
 
 class StartScreen:
     def __init__(self, surface):
@@ -28,18 +29,13 @@ class StartScreen:
         ##################################################################
         self.start_img = self.load_image('start.png')
         self.start_img = pygame.transform.scale(self.start_img, (int(self.start_img.get_width() * 0.7), int(self.start_img.get_height() * 0.7)))
-        full_rect = self.start_img.get_rect(topleft=(640, 160))
-        self.start_hitbox = full_rect.inflate(-120, -120)
+        self.start_rect = self.start_img.get_rect(topleft=(640, 160))
+        self.start_hitbox = self.start_rect.inflate(-12, -12)
         ##################################################################
         self.settings_img = self.load_image('settings.png')
         self.settings_img = pygame.transform.scale(self.settings_img, (int(self.settings_img.get_width() * 0.7), int(self.settings_img.get_height() * 0.7)))
         settings_full_rect = self.settings_img.get_rect(topleft=(735, 615))
         self.settings_hitbox = settings_full_rect.inflate(-70, -65)
-
-        ##################################################################
-        self.tutorial_img = self.load_image('tutorial.png')
-        tutorial_full_rect = self.tutorial_img.get_rect(topleft=(620, 400))
-        self.tutorial_hitbox = tutorial_full_rect.inflate(-40, -30)
 
         ##################################################################
         self.logo_img = self.load_image('Heliosylva.png')
@@ -60,9 +56,8 @@ class StartScreen:
             (int(self.instr_page.get_width() * 0.8), int(self.instr_page.get_height() * 0.8)),
         )
 
-        self.start_rect = self.start_img.get_rect(topleft=(640, 160))
         self.settings_rect = self.settings_img.get_rect(topleft=(730, 610))
-        self.tutorial_rect = self.tutorial_img.get_rect(topleft=(620, 400))
+        self.settings_hitbox = self.settings_rect.inflate(-12, -12)
 
         # Hitboxes aligned to settingsmain.png blit at settings_page_pos
         self.settings_page_pos = (250, 130)
@@ -92,26 +87,37 @@ class StartScreen:
 
     def draw_buttons(self):
         """Draws the buttons and the logo on top of the animation"""
-        #pygame.draw.rect(self.surface, (255, 0, 0), self.start_hitbox, 5) # Red outline
-        #pygame.draw.rect(self.surface, (255, 0, 0), self.settings_hitbox, 5)
-
-####################################################################################################################################
         self.surface.blit(self.logo_img, (0, 0))
         self.surface.blit(self.start_img, self.start_rect)
         self.surface.blit(self.settings_img, self.settings_rect)
-        self.surface.blit(self.tutorial_img, self.tutorial_rect)
+        self._draw_debug_outlines("main")
+
+    def _draw_debug_outlines(self, screen: str) -> None:
+        if not DEBUG_UI_OUTLINES:
+            return
+        color = (255, 0, 0)
+        if screen == "main":
+            for rect in (self.start_hitbox, self.settings_hitbox):
+                pygame.draw.rect(self.surface, color, rect, 2)
+        elif screen == "settings":
+            for rect in (
+                self.close_set_rect,
+                self.sound_left_rect,
+                self.sound_right_rect,
+                self.instr_rect,
+            ):
+                pygame.draw.rect(self.surface, color, rect, 2)
+        elif screen == "instructions":
+            pygame.draw.rect(self.surface, color, self.close_instr_rect, 2)
     
     def draw_settings(self):
         """Draws the buttons and the logo on top of the animation"""
         
-        #pygame.draw.rect(self.surface, (255, 0, 0), self.close_set_rect, 5)
-
-####################################################################################################################################
         self.surface.blit(self.settings_page, self.settings_page_pos)
         if self.settings_volume_label:
             label = self.settings_font.render(self.settings_volume_label, True, (45, 30, 18))
-            # Volume readout beside the < > arrows on settingsmain.png
             self.surface.blit(label, (self.settings_page_pos[0] + 368, self.settings_page_pos[1] + 178))
+        self._draw_debug_outlines("settings")
 
     def set_settings_volume_label(self, text: str) -> None:
         self.settings_volume_label = text
@@ -119,17 +125,13 @@ class StartScreen:
     def draw_instructions(self):
         """Draws the buttons and the logo on top of the animation"""
         
-        #pygame.draw.rect(self.surface, (255, 0, 0), self.settings_hitbox, 5)
-
-####################################################################################################################################
         self.surface.blit(self.instr_page, self.instr_page_pos)
+        self._draw_debug_outlines("instructions")
 
     def check_click(self, mouse_pos):
         if self.start_hitbox.collidepoint(mouse_pos):
             return "START"
-        if self.tutorial_hitbox.collidepoint(mouse_pos):
-            return "TUTORIAL"
-        if self.settings_rect.collidepoint(mouse_pos):
+        if self.settings_hitbox.collidepoint(mouse_pos):
             return "SETTINGS"
         return None
     def check_settings(self, mouse_pos):
