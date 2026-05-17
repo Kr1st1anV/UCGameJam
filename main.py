@@ -308,7 +308,6 @@ SUNSHINE_TOWER_TILE_TYPES = {
 }
 CAVE_TOWER_TILE_TYPES = {
     "b1": ("bat", TOWER_BAT),
-    "f1": ("firefly", TOWER_FIREFLY),
     "s1": ("spider", TOWER_SPIDER),
     "c1": ("scorpion", TOWER_SCORPION),
     "-8": ("bush", TOWER_BUSH),
@@ -547,7 +546,7 @@ class Game:
         # Presentation / juice (hackathon polish)
         self.mission_briefing_active = False
         self.see_through_obstacles = False
-        self.current_stage = STAGE_CAVE
+        self.current_stage = STAGE_SUNSHINE
         self._sky_display_sizes: dict[str, tuple[int, int]] = {}
         self._island_display_px = None
         self._floating_text = []  # {text, x, y, vy, life, color}
@@ -632,7 +631,7 @@ class Game:
         return candidates[0]
 
     def stage_for_wave(self, wave: int) -> str:
-        return Maps.stage_for_wave(wave)
+        return STAGE_SUNSHINE
 
     def _ui_blocks_round_start(self) -> bool:
         return (
