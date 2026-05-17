@@ -5,6 +5,7 @@ import copy
 import numpy as np
 import maps
 import random
+from paths import ROOT_DIR
 
 DEFAULT_WIDTH   = 978
 DEFAULT_HEIGHT  = 750
@@ -71,7 +72,7 @@ class StartScreen:
     def __init__(self, surface):
         self.surface = surface
         self.frames = []
-        self.folder_path = os.path.join(os.path.dirname(__file__), 'startscreen')
+        self.folder_path = os.path.join(ROOT_DIR, 'startscreen')
 
         file_list = sorted(os.listdir(self.folder_path))
         for file in file_list:
@@ -108,7 +109,7 @@ class StartScreen:
         )
 
         self.settings_volume_label = ""
-        font_path = os.path.join(os.path.dirname(__file__), 'fonts', 'Dico.ttf')
+        font_path = os.path.join(ROOT_DIR, 'fonts', 'Dico.ttf')
         self.settings_font = pygame.font.Font(font_path, 25)
         self.instr_title_font = pygame.font.Font(font_path, 34)
         self.instr_body_font = pygame.font.Font(font_path, 21)
@@ -131,7 +132,7 @@ class StartScreen:
         self.close_instr_rect = pygame.Rect(0, 0, 1, 1)
 
     def load_image(self, name):
-        path = os.path.join(os.path.dirname(__file__), 'buttons', name)
+        path = os.path.join(ROOT_DIR, 'buttons', name)
         return pygame.image.load(path).convert_alpha()
 
     def draw(self):

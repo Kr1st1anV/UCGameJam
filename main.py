@@ -5,6 +5,7 @@ import copy
 import numpy as np
 from maps import Maps
 import random
+from paths import ROOT_DIR
 from start_screen import StartScreen, draw_instructions_panel
 
 DEFAULT_BGCOLOR = (137, 207, 240)
@@ -12,15 +13,15 @@ DEFAULT_WIDTH   = 978
 DEFAULT_HEIGHT  = 750
 REFERENCE_GRID_SIZE = Maps.REFERENCE_GRID_SIZE
 BASE_MAX_TILES = 25
-ASSETS_DIR = os.path.join(os.path.dirname(__file__), 'tiles')
-BGROUND_DIR = os.path.join(os.path.dirname(__file__), 'bground')
-TOWERS_DIR = os.path.join(os.path.dirname(__file__), 'towers')
-BUTTONS_DIR = os.path.join(os.path.dirname(__file__), 'buttons')
-MOBS_DIR = os.path.join(os.path.dirname(__file__), 'mobs')
-ASSETS_UI_DIR = os.path.join(os.path.dirname(__file__), 'assets', 'ui')
-ASSETS_MOBS_DIR = os.path.join(os.path.dirname(__file__), 'assets', 'mobs')
-ASSETS_BG_DIR = os.path.join(os.path.dirname(__file__), 'assets', 'bg')
-MUSIC_DIR = os.path.join(os.path.dirname(__file__), 'music')
+ASSETS_DIR = os.path.join(ROOT_DIR, 'tiles')
+BGROUND_DIR = os.path.join(ROOT_DIR, 'bground')
+TOWERS_DIR = os.path.join(ROOT_DIR, 'towers')
+BUTTONS_DIR = os.path.join(ROOT_DIR, 'buttons')
+MOBS_DIR = os.path.join(ROOT_DIR, 'mobs')
+ASSETS_UI_DIR = os.path.join(ROOT_DIR, 'assets', 'ui')
+ASSETS_MOBS_DIR = os.path.join(ROOT_DIR, 'assets', 'mobs')
+ASSETS_BG_DIR = os.path.join(ROOT_DIR, 'assets', 'bg')
+MUSIC_DIR = os.path.join(ROOT_DIR, 'music')
 BG_MUSIC_CANDIDATES = (
     os.path.join(MUSIC_DIR, 'background_music.wav'),
     os.path.join(MUSIC_DIR, 'background_music.ogg'),
@@ -956,7 +957,7 @@ class Game:
         # Don't set showing_cutscene until images are loaded to prevent showing stale frames
         self.game_active = False
         self.cutscene_return_to_start = return_to_start  # Track if we should return to start screen after cutscene
-        path = os.path.join(os.path.dirname(__file__), 'cutscenes', folder_name)
+        path = os.path.join(ROOT_DIR, 'cutscenes', folder_name)
         
         # Load all images in the folder sorted by name (natural sort for f1, f2, f10, etc.)
         try:
@@ -1193,7 +1194,7 @@ class Game:
         
         for percent in self.health_steps:
             # Assumes files are named '100.png', '90.png', etc.
-            path = os.path.join(os.path.dirname(__file__), 'tree_health', f'hb{percent}.png')
+            path = os.path.join(ROOT_DIR, 'tree_health', f'hb{percent}.png')
             img = pygame.image.load(path).convert_alpha()
             # Scale it to a size that fits above your tree
             img = pygame.transform.scale(img, (int(img.get_width() * 0.7), int(img.get_height() * 0.7)))
@@ -1770,7 +1771,7 @@ class Game:
     
     def initiate_cached_fonts(self):
         """Pre-load fonts to avoid creating them every frame"""
-        font_path = os.path.join(os.path.join(os.path.dirname(__file__), 'fonts'), "Dico.ttf")
+        font_path = os.path.join(ROOT_DIR, 'fonts', "Dico.ttf")
         self.cached_font_large = pygame.font.Font(font_path, 35)
         self.cached_font_medium = pygame.font.Font(font_path, 25)
         self.cached_font_small = pygame.font.Font(font_path, 20)
