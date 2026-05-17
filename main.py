@@ -62,6 +62,70 @@ SHOVEL_CURSOR_OFFSET = (0, -12)
 WAVE_COMBAT_SECONDS = 30
 TILE_DRAW_SCALE = 1.75  # larger isometric tiles (reference layout was 1.5)
 
+# Isometric path/spawn art: sunshine uses classic names; cave uses n* paths + spawn* corners
+SUNSHINE_GROUND_TILE = "dark_grass"
+CAVE_GROUND_TILE = "v2_dark_grass"
+SUNSHINE_PATH_ICON = "path"
+CAVE_PATH_ICON = "nsingle"
+
+# Logical path tile id -> filename on disk
+CAVE_PATH_TILES = {
+    "4way": "n4way",
+    "3waytl": "n3waytl",
+    "3waytr": "n3waytr",
+    "3waybr": "n3waybr",
+    "3waybl": "n3waybl",
+    "posdia": "nposdia",
+    "negdia": "nnegadia",
+    "blbr": "nblbr",
+    "tltr": "ntltr",
+    "trbr": "ntrbr",
+    "tlbl": "ntlbl",
+    "endbl": "nendbl",
+    "endbr": "nendbr",
+    "endtl": "nendtl",
+    "endtr": "nend1tr",
+    "path": "nsingle",
+}
+SUNSHINE_SPAWN_TILES = {
+    "tl": "grey_bl",
+    "tr": "grey_br",
+    "bl": "grey_tl",
+    "br": "grey_tr",
+    "default": "grey",
+}
+CAVE_SPAWN_TILES = {
+    "tl": "spawnbl (1)",
+    "tr": "spawnbr (1)",
+    "bl": "spawntl (1)",
+    "br": "spawntr (1)",
+    "default": "spawnsingle (1)",
+}
+# Neighbor-connection key -> logical path tile (shared by sunshine and cave)
+PATH_CONNECTION_MAP = {
+    "tltrblbr": "4way",
+    "tltrbr": "3waytl",
+    "tltrbl": "3waytr",
+    "tlblbr": "3waybr",
+    "trblbr": "3waybl",
+    "tlbr": "posdia",
+    "trbl": "negdia",
+    "blbr": "blbr",
+    "tltr": "tltr",
+    "tlbl": "trbr",
+    "trbr": "tlbl",
+    "tl": "tl",
+    "tr": "tr",
+    "bl": "bl",
+    "br": "br",
+}
+SPAWN_CONNECTION_MAP = {
+    "tl": "tl",
+    "tr": "tr",
+    "bl": "bl",
+    "br": "br",
+}
+
 
 worm = {
     "health": 10,
@@ -264,7 +328,7 @@ HUD_BRANCH_TEXT_ANCHOR = (740, 158)
 HUD_TIMER_TEXT_ANCHOR = (755, 220)
 
 # Mob index: 0 worm, 1 butterfly, 2 dragonfly, 3 snail, 4 beetle
-MOB_UNLOCK_WAVES = (1, 2, 4, 7, 10)
+MOB_UNLOCK_WAVES = (1, 3, 6, 10, 15)
 # 2×3 Spawn grid on UI_play.png (screen coords @ UI_PLAY_SCALE)
 MOB_GRID_COLS = 3
 MOB_GRID_ROWS = 2
@@ -1507,6 +1571,50 @@ class Game:
     def tile_scale_factor(self) -> float:
         return TILE_DRAW_SCALE * self.map_scale
 
+    def _ground_tile_key(self) -> str:
+        if getattr(self, "current_stage", STAGE_SUNSHINE) == STAGE_CAVE:
+            if CAVE_GROUND_TILE in getattr(self, "tiles", {}):
+                return CAVE_GROUND_TILE
+        return SUNSHINE_GROUND_TILE
+
+    def _ground_tile_highlighted(self, is_hovered: bool) -> bool:
+        return self.see_through_obstacles or (
+            is_hovered and self.build and not self._path_edit_locked()
+        )
+
+    def _blit_ground_tile(self, draw_x: int, draw_y: int, is_hovered: bool) -> None:
+        """Cave: invisible ground until hover/V; then show lifted (highlighted) tile."""
+        ground = self._ground_tile_key()
+        highlighted = self._ground_tile_highlighted(is_hovered)
+        if getattr(self, "current_stage", STAGE_SUNSHINE) == STAGE_CAVE:
+            if highlighted:
+                self.surface.blit(self.h_tiles[ground], (draw_x, draw_y))
+            elif getattr(self, "cave_ground_tile_hidden", None) is not None:
+                self.surface.blit(self.cave_ground_tile_hidden, (draw_x, draw_y))
+            return
+        if highlighted:
+            self.surface.blit(self.h_tiles[ground], (draw_x, draw_y))
+        else:
+            self.surface.blit(self.tiles[ground], (draw_x, draw_y))
+
+    def _path_icon_key(self) -> str:
+        if getattr(self, "current_stage", STAGE_SUNSHINE) == STAGE_CAVE:
+            return CAVE_PATH_ICON
+        return SUNSHINE_PATH_ICON
+
+    def _tile_name_for_stage(self, logical_name: str, *, kind: str) -> str:
+        """Resolve logical tile id to on-disk tile name for the active stage."""
+        if kind == "spawn":
+            table = (
+                CAVE_SPAWN_TILES
+                if getattr(self, "current_stage", STAGE_SUNSHINE) == STAGE_CAVE
+                else SUNSHINE_SPAWN_TILES
+            )
+            return table.get(logical_name, logical_name)
+        if getattr(self, "current_stage", STAGE_SUNSHINE) == STAGE_CAVE:
+            return CAVE_PATH_TILES.get(logical_name, logical_name)
+        return logical_name
+
     def initiate_blocks(self):
         scale_factor = self.tile_scale_factor()
         self.tiles = {}
@@ -1514,33 +1622,51 @@ class Game:
             all_tiles = sorted(files)
             for tile in all_tiles:
                 name = tile.split(".")[0]
-                if tile == "path.png":
-                    self.path_icon = self.load_image(tile)
-                    ps = self.tile_scale_factor()
-                    self.path_icon = pygame.transform.scale(
-                        self.path_icon,
-                        (int(self.path_icon.get_width() * ps), int(self.path_icon.get_height() * ps)),
-                    )
                 temp_sprite = self.load_image(tile)
-                self.temp_tile = pygame.transform.scale(temp_sprite,(int(temp_sprite.get_width() * scale_factor), int(temp_sprite.get_height() * scale_factor)))
+                self.temp_tile = pygame.transform.scale(
+                    temp_sprite,
+                    (
+                        int(temp_sprite.get_width() * scale_factor),
+                        int(temp_sprite.get_height() * scale_factor),
+                    ),
+                )
                 self.tiles[name] = self.temp_tile
-        self.spriteSize = (self.tiles["dark_grass"].get_width(), self.tiles["dark_grass"].get_height())
-        self.h_tiles = {name : self.highlight_block(tile) for name, tile in self.tiles.items()}
+        path_icon_key = self._path_icon_key()
+        if path_icon_key in self.tiles:
+            self.path_icon = self.tiles[path_icon_key]
+        else:
+            fallback = self.tiles.get(SUNSHINE_PATH_ICON) or next(iter(self.tiles.values()))
+            self.path_icon = fallback
+        ground = self._ground_tile_key()
+        if ground not in self.tiles:
+            ground = SUNSHINE_GROUND_TILE
+        self.spriteSize = (self.tiles[ground].get_width(), self.tiles[ground].get_height())
+        self.h_tiles = {name: self.highlight_block(tile) for name, tile in self.tiles.items()}
+        self.cave_ground_tile_hidden = None
+        if CAVE_GROUND_TILE in self.tiles:
+            self.cave_ground_tile_hidden = self.tiles[CAVE_GROUND_TILE].copy()
+            self.cave_ground_tile_hidden.set_alpha(0)
 
     def initiate_towers(self):
         scale_factor = self.tile_scale_factor()
-        self.tower_data = {} # Stores frames: self.tower_data["bee"]["idle"] = [...]
-        self.tower_states = {} # Stores cooldowns: self.tower_states[(i, j)] = last_attack_time
+        self.tower_data = {}  # self.tower_data["bee"]["idle"] = [...]
+        self.tower_states = {}  # self.tower_states[(i, j)] = last_attack time
 
         for t_type in ["bee", "ladybug", "bush", "tree", "bat", "spider", "scorpion", "firefly"]:
             self.tower_data[t_type] = {"idle": [], "attack": []}
             for state in ["idle", "attack"]:
-                folder = os.path.join(TOWERS_DIR, t_type, state) # e.g., towers/bee/attack/
+                folder = os.path.join(TOWERS_DIR, t_type, state)
                 if os.path.exists(folder):
                     files = sorted(os.listdir(folder))
                     for f in files:
                         img = pygame.image.load(os.path.join(folder, f)).convert_alpha()
-                        scaled = pygame.transform.scale(img, (int(img.get_width() * scale_factor), int(img.get_height() * scale_factor)))
+                        scaled = pygame.transform.scale(
+                            img,
+                            (
+                                int(img.get_width() * scale_factor),
+                                int(img.get_height() * scale_factor),
+                            ),
+                        )
                         self.tower_data[t_type][state].append(scaled)
 
     def initiate_clouds(self):
@@ -1688,12 +1814,7 @@ class Game:
                 # When B is pressed (build = False, delete mode): highlight path tiles on hover
                 # When B is not pressed (build = True, build mode): highlight grass tiles on hover
                 if self.world_grid[i][j] == 0:
-                    if self.see_through_obstacles:
-                        self.surface.blit(self.h_tiles["dark_grass"], (draw_x, draw_y))
-                    elif is_hovered and self.build and not self._path_edit_locked():
-                        self.surface.blit(self.h_tiles["dark_grass"], (draw_x, draw_y))
-                    else:
-                        self.surface.blit(self.tiles["dark_grass"], (draw_x, draw_y))
+                    self._blit_ground_tile(draw_x, draw_y, is_hovered)
                 elif self.world_grid[i][j] == 1:
                     sprite = self.get_path_sprite(i, j)
                     if self.see_through_obstacles and self._is_v_path_tile(1):
@@ -1722,14 +1843,10 @@ class Game:
                 elif self.world_grid[i][j] == -9:
                     self.surface.blit(self.tiles["red"], (draw_x, draw_y)) # Tree
                 elif self.world_grid[i][j] == -8:
-                    if (
-                        self.see_through_obstacles and self._is_v_bush_tile(-8)
-                    ) or (
-                        is_hovered and self.build and not self._path_edit_locked()
+                    if getattr(self, "current_stage", STAGE_SUNSHINE) != STAGE_CAVE or self._ground_tile_highlighted(
+                        is_hovered
                     ):
-                        self.surface.blit(self.h_tiles["dark_grass"], (draw_x, draw_y))
-                    else:
-                        self.surface.blit(self.tiles["dark_grass"], (draw_x, draw_y))
+                        self._blit_ground_tile(draw_x, draw_y, is_hovered)
 
     def find_all_ends(self):
         """Find all -1 positions (start and end points)"""
@@ -1845,73 +1962,38 @@ class Game:
         highlighted_sprite.blit(white_sprite, (0,0), special_flags = pygame.BLEND_RGB_ADD)
         return highlighted_sprite
     
+    def _path_neighbor_key(self, i: int, j: int) -> str:
+        tl = i > 0 and self.world_grid[i - 1][j] in (1, -1)
+        tr = j > 0 and self.world_grid[i][j - 1] in (1, -1)
+        bl = j < self.grid_cols - 1 and self.world_grid[i][j + 1] in (1, -1)
+        br = i < self.grid_rows - 1 and self.world_grid[i + 1][j] in (1, -1)
+        parts = []
+        if tl:
+            parts.append("tl")
+        if tr:
+            parts.append("tr")
+        if bl:
+            parts.append("bl")
+        if br:
+            parts.append("br")
+        return "".join(parts)
+
     def get_path_sprite(self, i, j):
-        # 1. Check neighbors (1 or -1 means a path exists)
-        tl = i > 0 and self.world_grid[i-1][j] in [1, -1]
-        tr = j > 0 and self.world_grid[i][j-1] in [1, -1]
-        bl = j < self.grid_cols - 1 and self.world_grid[i][j+1] in [1, -1]
-        br = i < self.grid_rows - 1 and self.world_grid[i+1][j] in [1, -1]
+        conn = self._path_neighbor_key(i, j)
+        logical = PATH_CONNECTION_MAP.get(conn, "path")
+        if logical in ("tl", "tr", "bl", "br"):
+            logical = {"tl": "endbl", "tr": "endbr", "bl": "endtl", "br": "endtr"}[logical]
+        tile_name = self._tile_name_for_stage(logical, kind="path")
+        fallback = self._tile_name_for_stage("path", kind="path")
+        return self.tiles.get(tile_name, self.tiles.get(fallback, self.path_icon))
 
-        # 2. Build a key based on which neighbors are True
-        # We will use alphabetical order so 'tl' and 'tr' becomes 'tltr'
-        connections = []
-        if tl: connections.append("tl")
-        if tr: connections.append("tr")
-        if bl: connections.append("bl")
-        if br: connections.append("br")
-        
-        key = "".join(connections)
-
-        mapping = {
-            "tltrblbr": "4way",
-
-            "tltrbr":   "3waytl",
-            "tltrbl":   "3waytr",
-            "tlblbr":   "3waybr",
-            "trblbr":   "3waybl",
-
-            "tlbr":     "posdia",
-            "trbl":     "negdia",
-            "blbr":     "blbr",   
-            "tltr":     "tltr",  
-            "tlbl":     "trbr",   
-            "trbr":     "tlbl",   
-
-            "tl":       "endbl",
-            "tr":       "endbr",
-            "bl":       "endtl",
-            "br":       "endtr"
-        }
-
-        tile_name = mapping.get(key, "path") 
-        return self.tiles.get(tile_name, self.tiles["path"])
-    
     def get_spawn_sprite(self, i, j):
-        # 1. Check neighbors (1 or -1 means a path exists)
-        tl = i > 0 and self.world_grid[i-1][j] in [1, -1]
-        tr = j > 0 and self.world_grid[i][j-1] in [1, -1]
-        bl = j < self.grid_cols - 1 and self.world_grid[i][j+1] in [1, -1]
-        br = i < self.grid_rows - 1 and self.world_grid[i+1][j] in [1, -1]
-
-        # 2. Build a key based on which neighbors are True
-        # We will use alphabetical order so 'tl' and 'tr' becomes 'tltr'
-        connections = []
-        if tl: connections.append("tl")
-        if tr: connections.append("tr")
-        if bl: connections.append("bl")
-        if br: connections.append("br")
-        
-        key = "".join(connections)
-
-        mapping = {
-            "tl":       "grey_bl",
-            "tr":       "grey_br",
-            "bl":       "grey_tl",
-            "br":       "grey_tr"
-        }
-
-        tile_name = mapping.get(key, "grey") 
-        return self.tiles.get(tile_name, self.tiles["grey"])
+        conn = self._path_neighbor_key(i, j)
+        logical = SPAWN_CONNECTION_MAP.get(conn, "default")
+        tile_name = self._tile_name_for_stage(logical, kind="spawn")
+        fallback = self._tile_name_for_stage("default", kind="spawn")
+        sunshine_fallback = self.tiles.get("grey", self.tiles.get(SUNSHINE_GROUND_TILE))
+        return self.tiles.get(tile_name, self.tiles.get(fallback, sunshine_fallback))
     
 
     # Tower Mechanics
