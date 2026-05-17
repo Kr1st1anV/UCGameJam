@@ -98,32 +98,17 @@ beetle = {
     "cost": 8,
 }
 
-# Cave-world player mobs (spawn grid indices 0–4)
-cave_bat = {"health": 12, "damage": 3, "speed": 3, "cost": 1}
-cave_spider = {"health": 18, "damage": 5, "speed": 2, "cost": 2}
-cave_scorpion = {"health": 40, "damage": 12, "speed": 1, "cost": 5}
-cave_firefly = {"health": 8, "damage": 2, "speed": 5, "cost": 3}
-cave_moth = {"health": 55, "damage": 7, "speed": 2, "cost": 6}
-
-SUNSHINE_MOBS_BY_INDEX = (worm, butterfly, dragonfly, snail, beetle)
-CAVE_MOBS_BY_INDEX = (cave_bat, cave_spider, cave_scorpion, cave_firefly, cave_moth)
-
-SUNSHINE_MOB_SPRITES = (
+# Player mobs (same insects in cave and sunshine); towers differ by stage
+MOBS_BY_INDEX = (worm, butterfly, dragonfly, snail, beetle)
+MOB_SPRITES = (
     ("worm", ("worm moving_0001.png", "worm moving_0002.png", "worm moving_0003.png", "worm moving_0004.png")),
     ("butterfly", ("butterfly_0001.png", "butterfly_0002.png", "butterfly_0003.png", "butterfly_0004.png")),
     ("dragonfly", ("dragonfly flying_0001.png", "dragonfly flying_0002.png", "dragonfly flying_0003.png", "dragonfly flying_0004.png")),
     ("snail", ("snail idle_0001.png", "snail idle_0002.png", "snail idle_0003.png", "snail idle_0004.png")),
     ("beetle", ("beetle_0001.png", "beetle_0002.png", "beetle_0003.png", "beetle_0004.png")),
 )
-CAVE_MOB_SPRITES = (
-    ("bat", ("bat_0001.png", "bat_0002.png", "bat_0003.png", "bat_0004.png")),
-    ("spider", ("spider_0001.png", "spider_0002.png", "spider_0003.png", "spider_0004.png")),
-    ("scorpion", ("scorpion_0001.png", "scorpion_0002.png", "scorpion_0003.png", "scorpion_0004.png")),
-    ("firefly", ("firefly_0001.png", "firefly_0002.png", "firefly_0003.png", "firefly_0004.png")),
-    ("moth", ("moth_0001.png", "moth_0002.png", "moth_0003.png", "moth_0004.png")),
-)
 
-MOBS_PER_STAGE = 5
+MOB_COUNT = 5
 MOB_SPAWN_COOLDOWN_MS = 650
 MOB_SPRITE_HEIGHT_RATIO = 0.52  # mob frame height vs isometric tile size
 MOB_SPEED_CELL_FACTOR = 0.028
@@ -134,23 +119,15 @@ WAVE_BRANCHES = [15, 23, 27, 34, 40, 48, 52, 59, 65, 72, 78, 87, 91, 98, 102, 10
 WAVE_TREE_HEALTH = [18, 19, 20, 25, 31, 37, 38, 45, 53, 62, 72, 83, 95, 108, 122, 132, 147, 150, 168, 190]
 
 
-def mobs_for_stage(stage: str) -> tuple:
-    return CAVE_MOBS_BY_INDEX if stage == STAGE_CAVE else SUNSHINE_MOBS_BY_INDEX
-
-
-def mob_sprites_for_stage(stage: str) -> tuple:
-    return CAVE_MOB_SPRITES if stage == STAGE_CAVE else SUNSHINE_MOB_SPRITES
-
-
-def mob_pixel_speed_for(stage: str, mob_index: int, sprite_size: tuple[int, int]) -> float:
-    stat = float(mobs_for_stage(stage)[mob_index]["speed"])
+def mob_pixel_speed(mob_index: int, sprite_size: tuple[int, int]) -> float:
+    stat = float(MOBS_BY_INDEX[mob_index]["speed"])
     w, h = sprite_size
     cell = (w / 2 + h / 4) / 1.15
     return max(0.35, stat * cell * MOB_SPEED_CELL_FACTOR)
 
 
-def mob_animation_speed_for(stage: str, mob_index: int) -> float:
-    stat = float(mobs_for_stage(stage)[mob_index]["speed"])
+def mob_animation_speed(mob_index: int) -> float:
+    stat = float(MOBS_BY_INDEX[mob_index]["speed"])
     return 0.05 + stat * 0.04
 
 # # Per-wave budgets (20 waves)
@@ -340,41 +317,29 @@ PRESET_WORLD = [[0, -1, 0, 0, "l1", 0, 0, 0, 0, 0],
                 [0, 0, 0, 0, 0, 0, 0, 0, 0, -1]]
 '''
 class Mob:
-    def __init__(
-        self,
-        grid_coords,
-        sprite_size,
-        pivot_x,
-        pivot_y,
-        mob_type=None,
-        *,
-        stage: str = STAGE_SUNSHINE,
-    ):
+    def __init__(self, grid_coords, sprite_size, pivot_x, pivot_y, mob_type=None):
         self.health = 10
         self.waypoints = []
         w, h = sprite_size
         half_w, half_h = w / 2, h / 4
         self.mobcolor = [(200, 50, 50), (93, 63, 211), (0, 255, 255)]
-        self.stage = stage
-        mob_defs = mobs_for_stage(stage)
-        sprite_catalog = mob_sprites_for_stage(stage)
         if mob_type is not None:
             self.randmob = mob_type
         else:
-            self.randmob = random.randint(0, len(mob_defs) - 1)
-        self.mob_folder, self.frame_names = sprite_catalog[self.randmob]
-        mob_stat = mob_defs[self.randmob]
+            self.randmob = random.randint(0, len(MOBS_BY_INDEX) - 1)
+        self.mob_folder, self.frame_names = MOB_SPRITES[self.randmob]
+        mob_stat = MOBS_BY_INDEX[self.randmob]
         self.max_health = mob_stat["health"]
         self.health = self.max_health
         self.dmg = mob_stat["damage"]
-        self.speed = mob_pixel_speed_for(stage, self.randmob, sprite_size)
+        self.speed = mob_pixel_speed(self.randmob, sprite_size)
         self.design_speed = float(mob_stat["speed"])
 
         self._mob_frame_h = max(20, int(h * MOB_SPRITE_HEIGHT_RATIO))
         self.mobframes = [self.load_mob(frame) for frame in self.frame_names]
 
         self.current_frame = 0
-        self.animaton_speed = mob_animation_speed_for(stage, self.randmob)
+        self.animaton_speed = mob_animation_speed(self.randmob)
         self.animation_counter = 0
         
         # Convert grid indices to isometric screen coordinates
@@ -400,10 +365,6 @@ class Mob:
             path = os.path.join(MOBS_DIR, name)
             if os.path.isfile(path):
                 img = pygame.image.load(path).convert_alpha()
-        if img is None:
-            tower_idle = os.path.join(TOWERS_DIR, self.mob_folder, "idle", name)
-            if os.path.isfile(tower_idle):
-                img = pygame.image.load(tower_idle).convert_alpha()
         if img is None:
             raise FileNotFoundError(f"Mob sprite not found: {self.mob_folder}/{name}")
         return _scale_surface_to_height(img, self._mob_frame_h)
@@ -535,9 +496,8 @@ class Game:
 
         # Branches buy mobs during the wave; quota caps how many can be deployed
         self.current_branches = 0
-        self.mob_costs = [m["cost"] for m in mobs_for_stage(STAGE_CAVE)]
-        self.mob_spawn_cooldown_until = {i: 0 for i in range(MOBS_PER_STAGE)}
-        self.cached_mob_icons_by_stage: dict = {}
+        self.mob_costs = [m["cost"] for m in MOBS_BY_INDEX]
+        self.mob_spawn_cooldown_until = {i: 0 for i in range(MOB_COUNT)}
         self._tree_kill_handled = False
         self.poison_bush_cells: set[tuple[int, int]] = set()
         
@@ -675,7 +635,6 @@ class Game:
         self._last_tree_health_display = (-1, -1, "")
         if hasattr(self, "cached_font_health"):
             self._refresh_tree_health_label(force=True)
-        self._refresh_stage_mob_economy()
         if stage == STAGE_CAVE:
             self.active_clouds = []
         elif stage == STAGE_SUNSHINE and hasattr(self, "cloud_images"):
@@ -877,41 +836,36 @@ class Game:
             if hasattr(self, attr):
                 setattr(self, attr, None)
         self.cached_willow_frames = []
-        self.cached_mob_icons_by_stage = {}
         self.cached_mob_icons = {}
         self._last_tree_health_display = (-1, -1, "")
 
     def _load_mob_icon_caches(self) -> None:
         icon_box = MOB_GRID_SLOT_W - 12
-        self.cached_mob_icons_by_stage = {}
-        for stage in (STAGE_SUNSHINE, STAGE_CAVE):
-            icons: dict[int, pygame.Surface] = {}
-            for i, (mob_name, _frame_names) in enumerate(mob_sprites_for_stage(stage)):
-                try:
-                    mob_icon = None
-                    assets_folder = os.path.join(ASSETS_MOBS_DIR, mob_name)
-                    if os.path.isdir(assets_folder):
-                        mob_files = sorted(
-                            f for f in os.listdir(assets_folder)
-                            if f.endswith(".png") and "flipped" not in f.lower()
-                        )
-                        if mob_files:
-                            mob_icon = pygame.image.load(
-                                os.path.join(assets_folder, mob_files[0])
-                            ).convert_alpha()
-                    if mob_icon is None and os.path.isdir(MOBS_DIR):
-                        mob_files = sorted(
-                            f for f in os.listdir(MOBS_DIR)
-                            if f.endswith(".png") and mob_name in f.lower() and "flipped" not in f.lower()
-                        )
-                        if mob_files:
-                            mob_icon = pygame.image.load(os.path.join(MOBS_DIR, mob_files[0])).convert_alpha()
-                    if mob_icon is not None:
-                        icons[i] = _fit_surface_in_box(mob_icon, icon_box, icon_box)
-                except Exception:
-                    pass
-            self.cached_mob_icons_by_stage[stage] = icons
-        self._refresh_stage_mob_economy()
+        self.cached_mob_icons = {}
+        for i, (mob_name, _frame_names) in enumerate(MOB_SPRITES):
+            try:
+                mob_icon = None
+                assets_folder = os.path.join(ASSETS_MOBS_DIR, mob_name)
+                if os.path.isdir(assets_folder):
+                    mob_files = sorted(
+                        f for f in os.listdir(assets_folder)
+                        if f.endswith(".png") and "flipped" not in f.lower()
+                    )
+                    if mob_files:
+                        mob_icon = pygame.image.load(
+                            os.path.join(assets_folder, mob_files[0])
+                        ).convert_alpha()
+                if mob_icon is None and os.path.isdir(MOBS_DIR):
+                    mob_files = sorted(
+                        f for f in os.listdir(MOBS_DIR)
+                        if f.endswith(".png") and mob_name in f.lower() and "flipped" not in f.lower()
+                    )
+                    if mob_files:
+                        mob_icon = pygame.image.load(os.path.join(MOBS_DIR, mob_files[0])).convert_alpha()
+                if mob_icon is not None:
+                    self.cached_mob_icons[i] = _fit_surface_in_box(mob_icon, icon_box, icon_box)
+            except Exception:
+                pass
 
     def reload_visual_caches(self) -> None:
         """Reload backgrounds, UI, tree portraits, mob icons, and tower sprites."""
@@ -933,7 +887,7 @@ class Game:
         self.mobs = []
         self.selected_mob_type = 0
         self._tree_kill_handled = False
-        self.mob_spawn_cooldown_until = {i: 0 for i in range(MOBS_PER_STAGE)}
+        self.mob_spawn_cooldown_until = {i: 0 for i in range(MOB_COUNT)}
         self.reload_visual_caches()
         self.begin_wave_setup()
         self.tower_states = {}
@@ -1155,7 +1109,7 @@ class Game:
         self.surface.blit(c3, (bx + 24, y))
 
     def get_available_mobs_for_wave(self) -> list[int]:
-        return [i for i in range(MOBS_PER_STAGE) if self.is_mob_unlocked(i)]
+        return [i for i in range(MOB_COUNT) if self.is_mob_unlocked(i)]
 
     def tower_tile_types(self) -> dict:
         return tower_tile_types_for_stage(getattr(self, "current_stage", STAGE_SUNSHINE))
@@ -1165,12 +1119,6 @@ class Game:
             tile for tile, (t_type, _spec) in self.tower_tile_types().items()
             if t_type not in ("bush", "tree")
         )
-
-    def _refresh_stage_mob_economy(self) -> None:
-        stage = getattr(self, "current_stage", STAGE_SUNSHINE)
-        self.mob_costs = [m["cost"] for m in mobs_for_stage(stage)]
-        if hasattr(self, "cached_mob_icons_by_stage"):
-            self.cached_mob_icons = self.cached_mob_icons_by_stage.get(stage, {})
 
     def _normalize_tower_tiles_for_stage(self) -> None:
         """Map sunshine tower codes on level grids to the active stage's tower set."""
@@ -1372,8 +1320,7 @@ class Game:
         if len(pts) < 2:
             return False
         px, py = self.get_map_pivot()
-        stage = getattr(self, "current_stage", STAGE_SUNSHINE)
-        self.mobs.append(Mob(pts, self.spriteSize, px, py, mob_index, stage=stage))
+        self.mobs.append(Mob(pts, self.spriteSize, px, py, mob_index))
         self._start_mob_spawn_cooldown(mob_index)
         self._play_spawn_chirp()
         return True
@@ -2166,7 +2113,7 @@ class Game:
             slot_rect = self._mob_grid_slot_rect(slot)
             cx, cy = slot_rect.centerx, slot_rect.centery
 
-            if slot < MOBS_PER_STAGE:
+            if slot < MOB_COUNT:
                 mob_index = slot
                 unlocked = self.is_mob_unlocked(mob_index)
                 selected = mob_index == self.selected_mob_type
