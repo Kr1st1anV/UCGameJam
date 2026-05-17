@@ -20,6 +20,15 @@ MOBS_DIR = os.path.join(os.path.dirname(__file__), 'mobs')
 ASSETS_UI_DIR = os.path.join(os.path.dirname(__file__), 'assets', 'ui')
 ASSETS_MOBS_DIR = os.path.join(os.path.dirname(__file__), 'assets', 'mobs')
 ASSETS_BG_DIR = os.path.join(os.path.dirname(__file__), 'assets', 'bg')
+MUSIC_DIR = os.path.join(os.path.dirname(__file__), 'music')
+BG_MUSIC_CANDIDATES = (
+    os.path.join(MUSIC_DIR, 'background_music.wav'),
+    os.path.join(MUSIC_DIR, 'background_music.ogg'),
+)
+INGAME_SETTINGS_PAGE_FILE = "settingspage.png"
+CREDITS_PAGE_FILE = "cave credits.png"
+# Sound level shown on settingspage.png (static; not adjustable in UI)
+INITIAL_SOUND_COUNT = 1
 
 MAX_WAVES = 20
 CAVE_WAVE_MAX = 10
@@ -37,8 +46,8 @@ STAGE_UI_PLAY = {
     STAGE_SUNSHINE: "UI_play.png",
 }
 STAGE_SETTINGS_PAGE = {
-    STAGE_CAVE: "settingsmain.png",
-    STAGE_SUNSHINE: "settingsmain.png",
+    STAGE_CAVE: INGAME_SETTINGS_PAGE_FILE,
+    STAGE_SUNSHINE: INGAME_SETTINGS_PAGE_FILE,
 }
 STAGE_BG_FALLBACK = STAGE_BACKGROUNDS[STAGE_SUNSHINE]
 # --- Layout tuning (edit these) ---
@@ -59,7 +68,23 @@ CAVE_WILLOW_PORTRAIT_STAGES = (
     "willow_tree_dead.png",
 )
 SETTINGS_PAGE_SCALE = 0.8
-INGAME_SETTINGS_PAGE_POS = (250, 130)
+# settingspage.png — offsets from scaled page top-left (red outlines when DEBUG_UI_OUTLINES)
+INGAME_SETTINGS_HITBOX_OFFSETS = {
+    "close": (81, 88, 21, 22),
+    "sound_left": (306, 220, 20, 28),
+    "sound_right": (425, 220, 20, 28),
+    "instructions": (80, 280, 400, 38),
+    "credits": (80, 345, 400, 38),
+    "surrender": (80, 530, 400, 45),
+}
+INGAME_SETTINGS_HITBOX_INFLATE = {
+    "close": (16, 14),
+    "sound_left": (12, 10),
+    "sound_right": (12, 10),
+    "instructions": (0, 0),
+    "credits": (0, 0),
+    "surrender": (0, 0),
+}
 # Open Book of Life overlay (assets/ui/book/)
 BOOK_OF_LIFE_OPEN_SUNSHINE = "book1.png"
 BOOK_OF_LIFE_OPEN_CAVE = "cave_book.png"
@@ -195,7 +220,7 @@ MOB_SPRITES = (
     ("beetle", ("beetle_0001.png", "beetle_0002.png", "beetle_0003.png", "beetle_0004.png")),
 )
 
-MOB_COUNT = 6
+MOB_COUNT = len(MOBS_BY_INDEX)
 MOB_SPAWN_COOLDOWN_MS = 650
 MOB_SPRITE_HEIGHT_RATIO = 0.52  # mob frame height vs isometric tile size
 MOB_SPEED_CELL_FACTOR = 0.028
@@ -279,7 +304,7 @@ TOWER_BUSH = {
     "attack": 30,
     "attack_speed": 1,
     "cooldown": 1000 // 1,
-    "range_tiles": 3
+    "range_tiles": 1,
 }
 
 TOWER_BAT = {
@@ -361,9 +386,11 @@ HUD_TEXT_BROWN_LIGHT = (120, 85, 45)
 HUD_TEXT_BROWN_ACCENT = (200, 145, 55)
 HUD_HEALTH_TEXT_SUNSHINE = HUD_TEXT_BROWN
 HUD_HEALTH_TEXT_CAVE = (210, 185, 150)
-# Temporary poison VFX until dedicated UI (grid -8 = bush)
+# Poison from bush tiles (grid -8); VFX until dedicated UI
 POISON_OUTLINE_COLOR = (40, 220, 70)
 POISON_OUTLINE_WIDTH = 3
+POISON_HP_PCT = 0.02  # damage per tick = this fraction of current HP
+POISON_TICK_MS = 500
 # Surrender popup (coords relative to scaled surrenderpage blit top-left, scale 0.8)
 SURRENDER_HITBACK = pygame.Rect(69, 67, 21, 22)
 SURRENDER_HIT_NO = pygame.Rect(125, 200, 80, 58)
@@ -432,6 +459,7 @@ class Mob:
         self.target_idx = 1
         self.at_end = False
         self.poisoned = False
+        self._poison_tick_ms = 0
 
         self.mobframes_right = [self.load_mob(f) for f in self.frame_names]
         self.mobframes_left = [pygame.transform.flip(f, True, False) for f in self.mobframes_right]
@@ -552,7 +580,8 @@ class Game:
         self._floating_text = []  # {text, x, y, vy, life, color}
         self._last_tower_sound_ms = 0
         self._feel_audio_ready = False
-        self.sfx_volume_level = SFX_VOLUME_MAX
+        self._bg_music_path: str | None = None
+        self.sfx_volume_level = 0
         self.settings_volume_label = ""
         ########
         self.set_path = False
@@ -585,17 +614,9 @@ class Game:
         self.begin_wave_setup()
 
         pygame.font.init()
+        self._start_background_music()
+        self._finalize_sound_volume()
 
-        pygame.font.init()
-
-        try:
-            pygame.mixer.init()
-            pygame.mixer.music.load("music/background_music.ogg")
-            pygame.mixer.music.set_volume(0.3)
-            pygame.mixer.music.play(-1)
-        except pygame.error:
-            print("Audio device not available.")
-        
         # Cache for rendered text surfaces to avoid re-rendering every frame
         self.cached_text_surfaces = {}
         self.last_wave = 0
@@ -744,6 +765,13 @@ class Game:
         path = os.path.join(BUTTONS_DIR, name)
         return pygame.image.load(path).convert_alpha()
 
+    def load_ui_screen(self, name: str) -> pygame.Surface:
+        path = os.path.join(ASSETS_UI_DIR, name)
+        img = pygame.image.load(path)
+        if pygame.display.get_surface() is not None:
+            return img.convert_alpha()
+        return img
+
     def load_towers(self, name):
         path = os.path.join(TOWERS_DIR, name)
         return pygame.image.load(path).convert_alpha()
@@ -760,7 +788,8 @@ class Game:
 
     def _settings_page_display_size(self) -> tuple[int, int]:
         if self._settings_page_display_px is None:
-            ref = self.load_buttons(STAGE_SETTINGS_PAGE[STAGE_SUNSHINE])
+            path = os.path.join(ASSETS_UI_DIR, INGAME_SETTINGS_PAGE_FILE)
+            ref = pygame.image.load(path)
             self._settings_page_display_px = (
                 int(ref.get_width() * SETTINGS_PAGE_SCALE),
                 int(ref.get_height() * SETTINGS_PAGE_SCALE),
@@ -782,37 +811,56 @@ class Game:
             self.cached_ui_by_stage[stage] = self._scale_ui_play_image(raw)
         for stage, page_file in STAGE_SETTINGS_PAGE.items():
             try:
-                raw = self.load_buttons(page_file)
+                raw = self.load_ui_screen(page_file)
             except (pygame.error, FileNotFoundError):
-                raw = self.load_buttons(STAGE_SETTINGS_PAGE[STAGE_SUNSHINE])
+                raw = self.load_ui_screen(INGAME_SETTINGS_PAGE_FILE)
             self.cached_settings_by_stage[stage] = self._scale_settings_page_image(raw)
-        if not hasattr(self, "cached_instr_page"):
+        if getattr(self, "cached_instr_page", None) is None:
             instr_raw = self.load_buttons("instr_man.png")
             self.cached_instr_page = pygame.transform.scale(
                 instr_raw,
+                (
+                    int(instr_raw.get_width() * SETTINGS_PAGE_SCALE),
+                    int(instr_raw.get_height() * SETTINGS_PAGE_SCALE),
+                ),
+            )
+        if getattr(self, "cached_credits_page", None) is None:
+            credits_raw = self.load_ui_screen(CREDITS_PAGE_FILE)
+            self.cached_credits_page = pygame.transform.scale(
+                credits_raw,
                 self._settings_page_display_size(),
             )
 
+    def _ingame_settings_page_pos(self) -> tuple[int, int]:
+        page = self._ingame_settings_page()
+        if page is None:
+            w, h = self._settings_page_display_size()
+            return ((self.width - w) // 2, (self.height - h) // 2)
+        return (
+            (self.width - page.get_width()) // 2,
+            (self.height - page.get_height()) // 2,
+        )
+
     def _refresh_ingame_settings_hitboxes(self) -> None:
-        spx, spy = INGAME_SETTINGS_PAGE_POS
-        self._ingame_settings_hitboxes = {
-            "close": pygame.Rect(spx + 81, spy + 88, 21, 22).inflate(16, 14),
-            "sound_left": pygame.Rect(spx + 306, spy + 185, 20, 28).inflate(12, 10),
-            "sound_right": pygame.Rect(spx + 425, spy + 185, 20, 28).inflate(12, 10),
-            "surrender": pygame.Rect(spx + 80, spy + 248, 400, 55),
-        }
-        self._ingame_settings_hitboxes["instructions"] = pygame.Rect(spx + 80, spy + 220, 400, 42)
+        spx, spy = self._ingame_settings_page_pos()
+        self._ingame_settings_hitboxes = {}
+        for key, (ox, oy, w, h) in INGAME_SETTINGS_HITBOX_OFFSETS.items():
+            rect = pygame.Rect(spx + ox, spy + oy, w, h)
+            inflate = INGAME_SETTINGS_HITBOX_INFLATE.get(key)
+            if inflate:
+                rect = rect.inflate(*inflate)
+            self._ingame_settings_hitboxes[key] = rect
+
+    def _ingame_settings_page(self) -> pygame.Surface | None:
+        return self.cached_settings_by_stage.get(STAGE_SUNSHINE)
 
     def _draw_ingame_settings_overlay(self) -> None:
         veil = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
         veil.fill((8, 12, 28, 160))
         self.surface.blit(veil, (0, 0))
-        page = self.cached_settings_by_stage.get(
-            self.current_stage,
-            self.cached_settings_by_stage.get(STAGE_SUNSHINE),
-        )
+        page = self._ingame_settings_page()
         if page:
-            self.surface.blit(page, INGAME_SETTINGS_PAGE_POS)
+            self.surface.blit(page, self._ingame_settings_page_pos())
         if self.settings_volume_label:
             label = self.cached_font_small.render(
                 self.settings_volume_label, True, HUD_TEXT_BROWN
@@ -824,7 +872,24 @@ class Game:
                 cy = (lr.centery + rr.centery) // 2
                 self.surface.blit(label, label.get_rect(center=(cx, cy)))
 
-    def _draw_ingame_subpage_overlay(self, page_surf: pygame.Surface) -> None:
+    def _ensure_instr_page_cache(self) -> pygame.Surface | None:
+        if getattr(self, "cached_instr_page", None) is None:
+            try:
+                instr_raw = self.load_buttons("instr_man.png")
+                self.cached_instr_page = pygame.transform.scale(
+                    instr_raw,
+                    (
+                        int(instr_raw.get_width() * SETTINGS_PAGE_SCALE),
+                        int(instr_raw.get_height() * SETTINGS_PAGE_SCALE),
+                    ),
+                )
+            except (pygame.error, FileNotFoundError):
+                return None
+        return self.cached_instr_page
+
+    def _draw_ingame_subpage_overlay(self, page_surf: pygame.Surface | None) -> None:
+        if page_surf is None:
+            return
         veil = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
         veil.fill((8, 12, 28, 160))
         self.surface.blit(veil, (0, 0))
@@ -846,8 +911,6 @@ class Game:
             return "SOUND_UP"
         if hb.get("instructions") and hb["instructions"].collidepoint(mouse_pos):
             return "INSTRUCTIONS"
-        if hb.get("credits") and hb["credits"].collidepoint(mouse_pos):
-            return "CREDITS"
         if hb.get("surrender") and hb["surrender"].collidepoint(mouse_pos):
             return "SURRENDER"
         return None
@@ -934,9 +997,19 @@ class Game:
             if hasattr(self, attr):
                 setattr(self, attr, None)
         self._sky_display_sizes = {}
+        self.cached_ui_by_stage = {}
+        self.cached_settings_by_stage = {}
+        if hasattr(self, "cached_instr_page"):
+            del self.cached_instr_page
+        if hasattr(self, "cached_credits_page"):
+            del self.cached_credits_page
+        self.cached_text_surfaces = {}
         self.cached_willow_frames = []
         self.cached_mob_icons = {}
+        self.cached_tree_health_label = None
         self._last_tree_health_display = (-1, -1, "")
+        if hasattr(self, "cave_ground_tile_invisible"):
+            self.cave_ground_tile_invisible = None
 
     def _load_mob_icon_caches(self) -> None:
         icon_box = MOB_GRID_SLOT_W - 12
@@ -1097,12 +1170,54 @@ class Game:
             img = pygame.transform.scale(img, (int(img.get_width() * 0.7), int(img.get_height() * 0.7)))
             self.health_frames.append(img)
 
+    def _init_mixer(self) -> None:
+        if not pygame.mixer.get_init():
+            pygame.mixer.init(frequency=44100, size=-16, channels=2, buffer=512)
+
+    def _resolve_background_music_path(self) -> str | None:
+        for path in BG_MUSIC_CANDIDATES:
+            if os.path.isfile(path):
+                return path
+        return None
+
+    def _start_background_music(self) -> None:
+        """Load and loop background music (-1 = repeat forever)."""
+        try:
+            self._init_mixer()
+            path = self._resolve_background_music_path()
+            if path is None:
+                print("Background music file not found in music/")
+                self._bg_music_path = None
+                return
+            if hasattr(pygame, "MUSIC_END"):
+                pygame.mixer.music.set_endevent(pygame.MUSIC_END)
+            pygame.mixer.music.load(path)
+            self._apply_music_volume()
+            pygame.mixer.music.play(-1)
+            self._bg_music_path = path
+        except pygame.error as exc:
+            self._bg_music_path = None
+            print(f"Audio device not available: {exc}")
+
+    def _ensure_background_music_looping(self) -> None:
+        """Restart music if playback stopped (e.g. after mixer hiccup)."""
+        if self._bg_music_path is None:
+            return
+        if not pygame.mixer.get_init():
+            return
+        if pygame.mixer.music.get_busy():
+            return
+        try:
+            self._apply_music_volume()
+            pygame.mixer.music.play(-1)
+        except pygame.error:
+            pass
+
     def _init_feel_audio(self) -> None:
         if self._feel_audio_ready:
             return
         try:
-            if not pygame.mixer.get_init():
-                pygame.mixer.init(frequency=22050, size=-16, channels=2, buffer=512)
+            self._init_mixer()
             self._snd_spawn = self._make_tone_sound(520, 45, 0.12)
             self._snd_tower_hit = self._make_tone_sound(180, 55, 0.1)
             self._snd_tree_hit = self._make_tone_sound(95, 160, 0.22)
@@ -1111,20 +1226,20 @@ class Game:
         except Exception:
             self._feel_audio_ready = False
 
-    def _sfx_volume_float(self) -> float:
-        return self.sfx_volume_level / float(SFX_VOLUME_MAX)
+    def _resolve_sfx_volume_level(self) -> int:
+        """Gameplay volume step (matches Sound count on settingspage.png)."""
+        return INITIAL_SOUND_COUNT
 
-    def _apply_sfx_volume(self) -> None:
-        if not self._feel_audio_ready:
-            return
-        vol = self._sfx_volume_float()
-        for snd in (self._snd_spawn, self._snd_tower_hit, self._snd_tree_hit):
-            if snd:
-                snd.set_volume(vol)
+    def _finalize_sound_volume(self) -> None:
+        """Start silent, then apply volume from resolved sfx level."""
+        self.sfx_volume_level = self._resolve_sfx_volume_level()
+        self._apply_sfx_volume()
+        self._update_settings_volume_label()
 
     def _change_sfx_volume(self, delta: int) -> None:
         self.sfx_volume_level = max(0, min(SFX_VOLUME_MAX, self.sfx_volume_level + delta))
         self._apply_sfx_volume()
+        self._update_settings_volume_label()
         if self.sfx_volume_level > 0:
             self._play_spawn_chirp()
 
@@ -1132,6 +1247,27 @@ class Game:
         self.settings_volume_label = str(self.sfx_volume_level)
         if hasattr(self, "start_screen"):
             self.start_screen.set_settings_volume_label(self.settings_volume_label)
+
+    def _sfx_volume_float(self) -> float:
+        return self.sfx_volume_level / float(SFX_VOLUME_MAX)
+
+    def _apply_music_volume(self) -> None:
+        """Match background music loudness to the settings volume slider (0–10)."""
+        if self._bg_music_path is None or not pygame.mixer.get_init():
+            return
+        try:
+            pygame.mixer.music.set_volume(self._sfx_volume_float())
+        except pygame.error:
+            pass
+
+    def _apply_sfx_volume(self) -> None:
+        self._apply_music_volume()
+        if not self._feel_audio_ready:
+            return
+        vol = self._sfx_volume_float()
+        for snd in (self._snd_spawn, self._snd_tower_hit, self._snd_tree_hit):
+            if snd:
+                snd.set_volume(vol)
 
     def _make_tone_sound(self, freq: float, duration_ms: int, volume: float):
         sr = 22050
@@ -1314,7 +1450,6 @@ class Game:
             self.mobs = []
             self.selected_mob_type = 0
             self._apply_stage_visuals(stage)
-        self._refresh_ingame_settings_hitboxes()
         self.current_level_id = Maps.level_for_wave(self.wave)
         self.reset_grid(self.current_level_id, wave=self.wave)
         self.current_branches = branches_for_wave(self.wave)
@@ -1340,16 +1475,48 @@ class Game:
         cell = (w / 2 + h / 4) / 1.15
         return radius_tiles * cell
 
+    def _bush_sprite_rect(self, i: int, j: int) -> pygame.Rect | None:
+        frames = self.tower_data.get("bush", {}).get("idle", [])
+        if not frames:
+            return None
+        surf = frames[0]
+        w, h = self.spriteSize
+        half_w, half_h = w / 2, h / 4
+        pivot_x, pivot_y = self.get_map_pivot()
+        draw_x = pivot_x + (j - i) * half_w - half_w
+        draw_y = pivot_y + (j + i) * half_h
+        return surf.get_rect(topleft=(int(draw_x + 5), int(draw_y - h * 0.35)))
+
+    def _bush_attack_range_px(self) -> float:
+        frames = self.tower_data.get("bush", {}).get("idle", [])
+        if frames:
+            s = frames[0]
+            return max(s.get_width(), s.get_height()) * 0.5
+        return self._tower_range_pixels(TOWER_BUSH["range_tiles"])
+
+    def _tower_attack_position(self, i: int, j: int, t_type: str) -> pygame.Vector2:
+        if t_type == "bush":
+            rect = self._bush_sprite_rect(i, j)
+            if rect is not None:
+                return pygame.Vector2(rect.centerx, rect.centery)
+        w, h = self.spriteSize
+        half_w, half_h = w / 2, h / 4
+        pivot_x, pivot_y = self.get_map_pivot()
+        return pygame.Vector2(
+            pivot_x + (j - i) * half_w,
+            pivot_y + (j + i) * half_h - (h * 1.2),
+        )
+
     def _tower_combat_stats(self) -> dict:
         """Map grid tile -> [range_px, damage, cooldown_ms]."""
         out = {}
-        for tile, (_t_type, spec) in self.tower_tile_types().items():
+        for tile, (t_type, spec) in self.tower_tile_types().items():
             cooldown = spec.get("cooldown", int(1000 / max(1, spec["attack_speed"])))
-            out[tile] = [
-                self._tower_range_pixels(spec["range_tiles"]),
-                spec["attack"],
-                cooldown,
-            ]
+            if t_type == "bush":
+                rng = self._bush_attack_range_px()
+            else:
+                rng = self._tower_range_pixels(spec["range_tiles"])
+            out[tile] = [rng, spec["attack"], cooldown]
         return out
 
     def _on_tree_destroyed(self) -> None:
@@ -1494,7 +1661,7 @@ class Game:
             self.current_stage = self.stage_for_wave(self.wave)
             self._apply_stage_visuals(self.current_stage)
             self._refresh_ingame_settings_hitboxes()
-            self._update_settings_volume_label()
+            self._finalize_sound_volume()
 
             self._load_tree_portraits()
             
@@ -1639,12 +1806,21 @@ class Game:
         self.poison_bush_cells = cells
 
     def _update_mob_poison_status(self) -> None:
+        now = pygame.time.get_ticks()
         for mob in self.mobs:
             if mob.at_end or mob.health <= 0:
+                mob.poisoned = False
                 continue
             gi, gj = self._world_to_grid(mob.pos.x, mob.pos.y)
-            if (gi, gj) in self.poison_bush_cells:
-                mob.poisoned = True
+            on_poison = (gi, gj) in self.poison_bush_cells
+            mob.poisoned = on_poison
+            if not on_poison:
+                continue
+            if now - mob._poison_tick_ms < POISON_TICK_MS:
+                continue
+            mob._poison_tick_ms = now
+            dmg = max(1, int(mob.health * POISON_HP_PCT))
+            mob.health = max(0, mob.health - dmg)
 
     def sync_map_layout(self) -> None:
         """Match loop bounds and tile scale to the active Maps.py level size."""
@@ -1820,6 +1996,7 @@ class Game:
         self.initiate_clouds()
         self.initiate_tree_health_bars()
         self.initiate_cached_images()  # Pre-load and cache background images
+        self._refresh_ingame_settings_hitboxes()
         self.initiate_cached_fonts()  # Pre-load fonts
         self._refresh_wave_and_branch_hud()
         self._refresh_timer_hud(force=True)
@@ -1934,10 +2111,7 @@ class Game:
                 elif self.world_grid[i][j] == -9:
                     self.surface.blit(self.tiles["red"], (draw_x, draw_y)) # Tree
                 elif self.world_grid[i][j] == -8:
-                    if getattr(self, "current_stage", STAGE_SUNSHINE) != STAGE_CAVE or self._ground_tile_highlighted(
-                        is_hovered
-                    ):
-                        self._blit_ground_tile(draw_x, draw_y, is_hovered)
+                    self._blit_ground_tile(draw_x, draw_y, False)
 
     def find_all_ends(self):
         """Find all -1 positions (start and end points)"""
@@ -2107,10 +2281,6 @@ class Game:
         """Handle tower combat logic only (no animation)."""
         now = pygame.time.get_ticks()
         stats = self._tower_combat_stats()
-        
-        w, h = self.spriteSize
-        half_w, half_h = w / 2, h / 4
-        pivot_x, pivot_y = self.get_map_pivot()
 
         for i in range(self.grid_rows):
             for j in range(self.grid_cols):
@@ -2122,7 +2292,7 @@ class Game:
                     if tower_key not in self.tower_states:
                         self.tower_states[tower_key] = {"last_atk": 0, "frame": 0, "status": "idle", "flip": False}
 
-                    t_pos = pygame.Vector2(pivot_x + (j - i) * half_w, pivot_y + (j + i) * half_h - (h * 1.2))
+                    t_pos = self._tower_attack_position(i, j, t_type)
                     in_range = [m for m in self.mobs if t_pos.distance_to(m.pos) <= stats[tile][0]]
                     
                     if in_range:
@@ -2146,6 +2316,15 @@ class Game:
             return
         for rect in self.ui_hitboxes.values():
             pygame.draw.rect(self.surface, (255, 0, 0), rect, 2)
+        if self.showing_ingame_settings:
+            for name, rect in self._ingame_settings_hitboxes.items():
+                pygame.draw.rect(self.surface, (255, 0, 0), rect, 2)
+                if hasattr(self, "cached_font_small"):
+                    tag = self.cached_font_small.render(name, True, (255, 80, 80))
+                    self.surface.blit(tag, (rect.x, rect.y - 14))
+        close = getattr(self, "_ingame_subpage_close_rect", None)
+        if close is not None:
+            pygame.draw.rect(self.surface, (255, 0, 0), close, 2)
 
     def _surrender_panel_pos(self) -> tuple[int, int]:
         if not hasattr(self, 'cached_surrender_page'):
@@ -2193,26 +2372,6 @@ class Game:
         
         # Settings button (slightly larger than baked UI label for easier clicks)
         self.ui_hitboxes['settings'] = pygame.Rect(835, 685, 120, 35)
-
-        # Dev-only: unlabeled skip control (top-left corner, no in-game label)
-        dev_skip_rect = pygame.Rect(6, 6, 16, 16)
-        self.ui_hitboxes['dev_skip_wave'] = dev_skip_rect
-        pygame.draw.rect(self.surface, (120, 145, 165), dev_skip_rect)
-        pygame.draw.rect(self.surface, (90, 110, 130), dev_skip_rect, 1)
-
-        if self.round_active and not self.edit_mode:
-            spawn_button_rect = pygame.Rect(700, 650, 180, 45)
-            self.ui_hitboxes['spawn_wave'] = spawn_button_rect
-            can_spawn = (
-                self.current_branches >= self.mob_costs[self.selected_mob_type]
-                and not self._mob_spawn_on_cooldown(self.selected_mob_type)
-            )
-            button_color = (0, 160, 0) if can_spawn else (100, 100, 100)
-            pygame.draw.rect(self.surface, button_color, spawn_button_rect)
-            pygame.draw.rect(self.surface, (255, 255, 255), spawn_button_rect, 2)
-            spawn_text = self.cached_font_medium.render('SPAWN MOB', True, (255, 255, 255))
-            spawn_text_rect = spawn_text.get_rect(center=spawn_button_rect.center)
-            self.surface.blit(spawn_text, spawn_text_rect)
 
         if (
             self.last_wave != self.wave
@@ -2263,15 +2422,10 @@ class Game:
 
         if self.showing_ingame_settings:
             self._draw_ingame_settings_overlay()
-        elif self.showing_ingame_instructions and hasattr(self, "cached_instr_page"):
-            self._draw_ingame_subpage_overlay(self.cached_instr_page)
-        elif self.showing_ingame_credits:
-            page = self.cached_settings_by_stage.get(
-                self.current_stage,
-                self.cached_settings_by_stage.get(STAGE_SUNSHINE),
-            )
-            if page:
-                self._draw_ingame_subpage_overlay(page)
+        elif self.showing_ingame_instructions:
+            self._draw_ingame_subpage_overlay(self._ensure_instr_page_cache())
+        elif self.showing_ingame_credits and getattr(self, "cached_credits_page", None) is not None:
+            self._draw_ingame_subpage_overlay(self.cached_credits_page)
 
         self._draw_ui_debug_outlines()
 
@@ -2339,9 +2493,6 @@ class Game:
                 return "SURRENDER_YES"
             return None
 
-        if 'dev_skip_wave' in self.ui_hitboxes and self.ui_hitboxes['dev_skip_wave'].collidepoint(mouse_pos):
-            return "DEV_SKIP_WAVE"
-
         # Check spawn box clicks (2×3 mob grid)
         for i in range(5):  # 5 mob types
             box_key = f'spawn_box_{i}'
@@ -2359,10 +2510,6 @@ class Game:
         if 'settings' in self.ui_hitboxes and self.ui_hitboxes['settings'].collidepoint(mouse_pos):
             return "SETTINGS"
 
-        # Check spawn wave button while round is active
-        if 'spawn_wave' in self.ui_hitboxes and self.ui_hitboxes['spawn_wave'].collidepoint(mouse_pos):
-            return "SPAWN_WAVE"
-        
         # Check book buttons
         if 'book_of_evil' in self.ui_hitboxes and self.ui_hitboxes['book_of_evil'].collidepoint(mouse_pos):
             return "BOOK_OF_EVIL"
@@ -2512,6 +2659,7 @@ class Game:
 
 
     def draw_window(self) -> None:
+        self._ensure_background_music_looping()
         if self.showing_cutscene:
             # Draw cutscene (check this first so it takes priority)
             if self.cutscene_images and len(self.cutscene_images) > 0:
@@ -2794,6 +2942,8 @@ class Game:
             for event in events:
                 if event.type == pygame.QUIT:
                     self.quit_app()
+                if hasattr(pygame, "MUSIC_END") and event.type == pygame.MUSIC_END:
+                    self._start_background_music()
                 if self.showing_cutscene:
                     # Allow skipping cutscene with mouse click or any key (after delay)
                     current_time = pygame.time.get_ticks()
@@ -2843,10 +2993,10 @@ class Game:
                 else:
                     if event.type == pygame.MOUSEMOTION:
                         self.x, self.y = event.pos
+                    if event.type == pygame.KEYDOWN and event.key == pygame.K_F9:
+                        self._dev_skip_wave()
+                        continue
                     if self.mission_briefing_active:
-                        if event.type == pygame.KEYDOWN and event.key == pygame.K_F9:
-                            self._dev_skip_wave()
-                            continue
                         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                             self.mission_briefing_active = False
                             continue
@@ -2857,6 +3007,8 @@ class Game:
                             if close is None or close.collidepoint(event.pos):
                                 self.showing_ingame_instructions = False
                                 self.showing_ingame_credits = False
+                                self.showing_ingame_settings = True
+                                self._refresh_ingame_settings_hitboxes()
                         continue
                     if self.showing_ingame_settings:
                         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
@@ -2865,14 +3017,13 @@ class Game:
                                 self.showing_ingame_settings = False
                             elif action == "SOUND_DOWN":
                                 self._change_sfx_volume(-1)
-                                self._update_settings_volume_label()
                             elif action == "SOUND_UP":
                                 self._change_sfx_volume(1)
-                                self._update_settings_volume_label()
                             elif action == "INSTRUCTIONS":
+                                self.showing_ingame_settings = False
+                                self.showing_ingame_credits = False
+                                self._ensure_instr_page_cache()
                                 self.showing_ingame_instructions = True
-                            elif action == "CREDITS":
-                                self.showing_ingame_credits = True
                             elif action == "SURRENDER":
                                 self.showing_ingame_settings = False
                                 self.showing_surrender = True
@@ -2919,17 +3070,6 @@ class Game:
                                             self.current_branches -= cost
                                 else:
                                     self.selected_mob_type = mob_index
-                            elif ui_action == "SPAWN_WAVE":
-                                if self.round_active and not self.edit_mode:
-                                    available_mobs = self.get_available_mobs_for_wave()
-                                    if (
-                                        self.selected_mob_type in available_mobs
-                                        and self.current_branches >= self.mob_costs[self.selected_mob_type]
-                                        and not self._mob_spawn_on_cooldown(self.selected_mob_type)
-                                    ):
-                                        cost = self.mob_costs[self.selected_mob_type]
-                                        if self._spawn_mob_on_path(self.selected_mob_type):
-                                            self.current_branches -= cost
                             elif ui_action == "SCROLL_LEFT":
                                 if self.scroll_page > 0:
                                     self.scroll_page -= 1
@@ -2937,8 +3077,6 @@ class Game:
                                 last = SCRIPT_OF_EVIL_PAGE_COUNT - 1
                                 if self.scroll_page < last:
                                     self.scroll_page += 1
-                            elif ui_action == "DEV_SKIP_WAVE":
-                                self._dev_skip_wave()
                             elif ui_action == "SETTINGS":
                                 self.showing_ingame_settings = True
                                 self._refresh_ingame_settings_hitboxes()
@@ -2955,8 +3093,6 @@ class Game:
                             self.set_path = False
                             self.rm_path = False
                     elif event.type == pygame.KEYDOWN:
-                        if event.key == pygame.K_F9:
-                            self._dev_skip_wave()
                         if event.key == pygame.K_r:
                             if not self.round_active:
                                 self.reset_grid(wave=self.wave)

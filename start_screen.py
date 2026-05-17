@@ -9,6 +9,10 @@ import random
 DEFAULT_WIDTH   = 978
 DEFAULT_HEIGHT  = 750
 DEBUG_UI_OUTLINES = False
+SETTINGS_PAGE_SCALE = 0.8
+MENU_SETTINGS_PAGE_FILE = "settingsmain.png"
+# settingsmain.png — single Instructions row (offsets from scaled page top-left)
+MENU_SETTINGS_INSTR_OFFSET = (80, 245, 370, 40)
 
 class StartScreen:
     def __init__(self, surface):
@@ -41,10 +45,13 @@ class StartScreen:
         self.logo_img = self.load_image('Heliosylva.png')
         self.logo_img = pygame.transform.scale(self.logo_img, (int(self.logo_img.get_width() * 0.7), int(self.logo_img.get_height() * 0.7)))
 
-        self.settings_page = self.load_image('settingsmain.png')
+        settings_raw = self.load_image(MENU_SETTINGS_PAGE_FILE)
         self.settings_page = pygame.transform.scale(
-            self.settings_page,
-            (int(self.settings_page.get_width() * 0.8), int(self.settings_page.get_height() * 0.8)),
+            settings_raw,
+            (
+                int(settings_raw.get_width() * SETTINGS_PAGE_SCALE),
+                int(settings_raw.get_height() * SETTINGS_PAGE_SCALE),
+            ),
         )
 
         self.settings_volume_label = ""
@@ -60,16 +67,23 @@ class StartScreen:
         self.settings_rect = self.settings_img.get_rect(topleft=(730, 610))
         self.settings_hitbox = self.settings_rect.inflate(-12, -12)
 
-        # Hitboxes aligned to settingsmain.png blit at settings_page_pos
-        self.settings_page_pos = (250, 130)
+        sw, sh = self.settings_page.get_size()
+        self.settings_page_pos = (
+            (self.surface.get_width() - sw) // 2,
+            (self.surface.get_height() - sh) // 2,
+        )
         spx, spy = self.settings_page_pos
         self.close_set_rect = pygame.Rect(spx + 81, spy + 88, 21, 22).inflate(16, 14)
         self.sound_left_rect = pygame.Rect(spx + 306, spy + 185, 20, 28).inflate(12, 10)
         self.sound_right_rect = pygame.Rect(spx + 425, spy + 185, 20, 28).inflate(12, 10)
-        self.instr_rect = pygame.Rect(spx + 80, spy + 248, 400, 48)
+        ox, oy, w, h = MENU_SETTINGS_INSTR_OFFSET
+        self.instr_rect = pygame.Rect(spx + ox, spy + oy, w, h)
 
-        # Instructions page (instr_man.png) blit at (250, 30)
-        self.instr_page_pos = (250, 30)
+        iw, ih = self.instr_page.get_size()
+        self.instr_page_pos = (
+            (self.surface.get_width() - iw) // 2,
+            (self.surface.get_height() - ih) // 2,
+        )
         ipx, ipy = self.instr_page_pos
         self.close_instr_rect = pygame.Rect(ipx + 81, ipy + 88, 21, 22).inflate(16, 14)
 
@@ -108,9 +122,11 @@ class StartScreen:
                 self.instr_rect,
             ):
                 pygame.draw.rect(self.surface, color, rect, 2)
+            tag = self.settings_font.render("instructions", True, (255, 80, 80))
+            self.surface.blit(tag, (self.instr_rect.x, self.instr_rect.y - 14))
         elif screen == "instructions":
             pygame.draw.rect(self.surface, color, self.close_instr_rect, 2)
-    
+
     def _sound_volume_label_center(self) -> tuple[int, int]:
         lr = self.sound_left_rect
         rr = self.sound_right_rect
@@ -118,7 +134,6 @@ class StartScreen:
 
     def draw_settings(self):
         """Draws the buttons and the logo on top of the animation"""
-        
         self.surface.blit(self.settings_page, self.settings_page_pos)
         if self.settings_volume_label:
             label = self.settings_font.render(self.settings_volume_label, True, (85, 58, 28))
@@ -130,7 +145,6 @@ class StartScreen:
 
     def draw_instructions(self):
         """Draws the buttons and the logo on top of the animation"""
-        
         self.surface.blit(self.instr_page, self.instr_page_pos)
         self._draw_debug_outlines("instructions")
 
@@ -140,6 +154,7 @@ class StartScreen:
         if self.settings_hitbox.collidepoint(mouse_pos):
             return "SETTINGS"
         return None
+
     def check_settings(self, mouse_pos):
         if self.close_set_rect.collidepoint(mouse_pos):
             return "CLOSE"
@@ -150,9 +165,8 @@ class StartScreen:
         if self.instr_rect.collidepoint(mouse_pos):
             return "INSTRUCTIONS"
         return None
-    
+
     def check_closing_instructions(self, mouse_pos):
         if self.close_instr_rect.collidepoint(mouse_pos):
             return "CLOSE"
         return None
-    
