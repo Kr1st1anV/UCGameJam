@@ -615,6 +615,7 @@ class Game:
         self._tree_kill_handled = False
         self.poison_bush_cells: set[tuple[int, int]] = set()
         self._poison_bush_touch_zones: list[tuple[pygame.Vector2, float]] = []
+        self._running = True
         
         self.wave = 1
         self.begin_wave_setup()
@@ -2056,6 +2057,7 @@ class Game:
         self.run_event_loop()
 
     def quit_app(self) -> None:
+        self._running = False
         pygame.quit()
         sys.exit()
 
@@ -2992,77 +2994,53 @@ class Game:
         self.tower_states = {}
 
     def run_event_loop(self) -> None:
-        while True:
-            events = pygame.event.get()
-            ### FOR WAVES SYSTEM
-            for event in events:
-                if event.type == pygame.QUIT:
-                    self.quit_app()
-                if hasattr(pygame, "MUSIC_END") and event.type == pygame.MUSIC_END:
-                    self._start_background_music()
-                if self.showing_cutscene:
-                    # Allow skipping cutscene with mouse click or any key (after delay)
-                    current_time = pygame.time.get_ticks()
-                    if (event.type == pygame.MOUSEBUTTONDOWN or event.type == pygame.KEYDOWN) and current_time > self.cutscene_skip_delay:
-                        self.showing_cutscene = False
-                        self.game_active = True
-                        # If cutscene was victory/defeat, return to start screen
-                        if self.cutscene_return_to_start:
-                            self.showing_start_screen = True
-                            self.reset_game_state()
-                        # For test cutscene: continue to game
-                        elif not self.showing_start_screen:
-                            # Already in game, just continue
-                            pass
-                        else:
-                            # Test cutscene finished, now start the game
+        self._running = True
+        while self._running and self._run_event_loop_frame():
+            pass
+
+    def _run_event_loop_frame(self) -> bool:
+        if not self._running:
+            return False
+        events = pygame.event.get()
+        ### FOR WAVES SYSTEM
+        for event in events:
+            if event.type == pygame.QUIT:
+                self.quit_app()
+            if hasattr(pygame, "MUSIC_END") and event.type == pygame.MUSIC_END:
+                self._start_background_music()
+            if self.showing_cutscene:
+                # Allow skipping cutscene with mouse click or any key (after delay)
+                current_time = pygame.time.get_ticks()
+                if (event.type == pygame.MOUSEBUTTONDOWN or event.type == pygame.KEYDOWN) and current_time > self.cutscene_skip_delay:
+                    self.showing_cutscene = False
+                    self.game_active = True
+                    # If cutscene was victory/defeat, return to start screen
+                    if self.cutscene_return_to_start:
+                        self.showing_start_screen = True
+                        self.reset_game_state()
+                    # For test cutscene: continue to game
+                    elif not self.showing_start_screen:
+                        # Already in game, just continue
+                        pass
+                    else:
+                        # Test cutscene finished, now start the game
+                        self.showing_start_screen = False
+            elif self.showing_start_screen:
+                if event.type == pygame.MOUSEBUTTONDOWN:
+                    action = None
+                    if not self.showing_settings_screen and not self.showing_instructions_scene:
+                        action = self.start_screen.check_click(event.pos)
+                        if action == "START":
+                            # Start the game normally (reload caches in case art changed)
+                            self.reload_visual_caches()
+                            self.begin_wave_setup()
                             self.showing_start_screen = False
-                elif self.showing_start_screen:
-                    if event.type == pygame.MOUSEBUTTONDOWN:
-                        action = None
-                        if not self.showing_settings_screen and not self.showing_instructions_scene:
-                            action = self.start_screen.check_click(event.pos)
-                            if action == "START":
-                                # Start the game normally (reload caches in case art changed)
-                                self.reload_visual_caches()
-                                self.begin_wave_setup()
-                                self.showing_start_screen = False
-                                self.mission_briefing_active = True
-                                self._clear_path_editing()
-                                self.see_through_obstacles = False
-                            if action == "SETTINGS":
-                                self.showing_settings_screen = True
-                        elif self.showing_instructions_scene:
-                            if (
-                                event.type == pygame.MOUSEBUTTONDOWN
-                                and event.button == 1
-                            ) or (
-                                event.type == pygame.KEYDOWN
-                                and event.key == pygame.K_ESCAPE
-                            ):
-                                self.showing_instructions_scene = False
-                        elif self.showing_settings_screen:
-                            action = self.start_screen.check_settings(event.pos)
-                            if action == "CLOSE":
-                                self.showing_settings_screen = False
-                            elif action == "INSTRUCTIONS":
-                                self.showing_instructions_scene = True
-                            elif action == "SOUND_DOWN":
-                                self._change_sfx_volume(-1)
-                            elif action == "SOUND_UP":
-                                self._change_sfx_volume(1)
-                else:
-                    if event.type == pygame.MOUSEMOTION:
-                        self.x, self.y = event.pos
-                    if event.type == pygame.KEYDOWN and event.key == pygame.K_F9:
-                        self._dev_skip_wave()
-                        continue
-                    if self.mission_briefing_active:
-                        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                            self.mission_briefing_active = False
-                            continue
-                        continue
-                    if self.showing_ingame_instructions:
+                            self.mission_briefing_active = True
+                            self._clear_path_editing()
+                            self.see_through_obstacles = False
+                        if action == "SETTINGS":
+                            self.showing_settings_screen = True
+                    elif self.showing_instructions_scene:
                         if (
                             event.type == pygame.MOUSEBUTTONDOWN
                             and event.button == 1
@@ -3070,169 +3048,198 @@ class Game:
                             event.type == pygame.KEYDOWN
                             and event.key == pygame.K_ESCAPE
                         ):
-                            self.showing_ingame_instructions = False
+                            self.showing_instructions_scene = False
+                    elif self.showing_settings_screen:
+                        action = self.start_screen.check_settings(event.pos)
+                        if action == "CLOSE":
+                            self.showing_settings_screen = False
+                        elif action == "INSTRUCTIONS":
+                            self.showing_instructions_scene = True
+                        elif action == "SOUND_DOWN":
+                            self._change_sfx_volume(-1)
+                        elif action == "SOUND_UP":
+                            self._change_sfx_volume(1)
+            else:
+                if event.type == pygame.MOUSEMOTION:
+                    self.x, self.y = event.pos
+                if event.type == pygame.KEYDOWN and event.key == pygame.K_F9:
+                    self._dev_skip_wave()
+                    continue
+                if self.mission_briefing_active:
+                    if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                        self.mission_briefing_active = False
+                        continue
+                    continue
+                if self.showing_ingame_instructions:
+                    if (
+                        event.type == pygame.MOUSEBUTTONDOWN
+                        and event.button == 1
+                    ) or (
+                        event.type == pygame.KEYDOWN
+                        and event.key == pygame.K_ESCAPE
+                    ):
+                        self.showing_ingame_instructions = False
+                        self.showing_ingame_settings = True
+                        self._refresh_ingame_settings_hitboxes()
+                    continue
+                if self.showing_ingame_credits:
+                    if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                        close = getattr(self, "_ingame_subpage_close_rect", None)
+                        if close is None or close.collidepoint(event.pos):
+                            self.showing_ingame_credits = False
                             self.showing_ingame_settings = True
                             self._refresh_ingame_settings_hitboxes()
-                        continue
-                    if self.showing_ingame_credits:
-                        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                            close = getattr(self, "_ingame_subpage_close_rect", None)
-                            if close is None or close.collidepoint(event.pos):
-                                self.showing_ingame_credits = False
-                                self.showing_ingame_settings = True
-                                self._refresh_ingame_settings_hitboxes()
-                        continue
-                    if self.showing_ingame_settings:
-                        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                            action = self._ingame_settings_click(event.pos)
-                            if action == "CLOSE":
-                                self.showing_ingame_settings = False
-                            elif action == "SOUND_DOWN":
-                                self._change_sfx_volume(-1)
-                            elif action == "SOUND_UP":
-                                self._change_sfx_volume(1)
-                            elif action == "INSTRUCTIONS":
-                                self.showing_ingame_settings = False
-                                self.showing_ingame_credits = False
-                                self.showing_ingame_instructions = True
-                            elif action == "SURRENDER":
-                                self.showing_ingame_settings = False
-                                self.showing_surrender = True
-                                self._clear_path_editing()
-                        continue
-                    if self.showing_surrender:
-                        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                            ui_action = self.ui_check_click(event.pos)
-                            if ui_action in ("SURRENDER_BACK", "SURRENDER_NO"):
-                                self.showing_surrender = False
-                                self._clear_path_editing()
-                            elif ui_action == "SURRENDER_YES":
-                                self.showing_surrender = False
-                                self.return_to_main_menu()
-                        continue
-                    if event.type == pygame.MOUSEBUTTONDOWN: # 1 is left, 3 is right
-                        if event.button == 1:
-                            ui_action = self.ui_check_click(event.pos)
+                    continue
+                if self.showing_ingame_settings:
+                    if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                        action = self._ingame_settings_click(event.pos)
+                        if action == "CLOSE":
+                            self.showing_ingame_settings = False
+                        elif action == "SOUND_DOWN":
+                            self._change_sfx_volume(-1)
+                        elif action == "SOUND_UP":
+                            self._change_sfx_volume(1)
+                        elif action == "INSTRUCTIONS":
+                            self.showing_ingame_settings = False
+                            self.showing_ingame_credits = False
+                            self.showing_ingame_instructions = True
+                        elif action == "SURRENDER":
+                            self.showing_ingame_settings = False
+                            self.showing_surrender = True
+                            self._clear_path_editing()
+                    continue
+                if self.showing_surrender:
+                    if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                        ui_action = self.ui_check_click(event.pos)
+                        if ui_action in ("SURRENDER_BACK", "SURRENDER_NO"):
+                            self.showing_surrender = False
+                            self._clear_path_editing()
+                        elif ui_action == "SURRENDER_YES":
+                            self.showing_surrender = False
+                            self.return_to_main_menu()
+                    continue
+                if event.type == pygame.MOUSEBUTTONDOWN: # 1 is left, 3 is right
+                    if event.button == 1:
+                        ui_action = self.ui_check_click(event.pos)
 ################################################################################################################
-                            if ui_action == "BOOK_OF_EVIL":
-                                self.showing_scroll = not self.showing_scroll
-                                if self.showing_scroll:
-                                    self.scroll_page = 0
-                                if self.showing_book is True:
-                                    self.showing_book = not self.showing_book
-                                self._clear_path_editing()
-                            elif ui_action == "BOOK_OF_LIFE":
+                        if ui_action == "BOOK_OF_EVIL":
+                            self.showing_scroll = not self.showing_scroll
+                            if self.showing_scroll:
+                                self.scroll_page = 0
+                            if self.showing_book is True:
                                 self.showing_book = not self.showing_book
-                                if self.showing_scroll is True:
-                                    self.showing_scroll = not self.showing_scroll
-                                self._clear_path_editing()
-                            elif ui_action and ui_action.startswith("SPAWN_BOX_"):
-                                mob_index = int(ui_action.split("_")[2])
-                                if not self.is_mob_unlocked(mob_index):
-                                    pass
-                                elif self.round_active and not self.edit_mode:
-                                    self.selected_mob_type = mob_index
-                                    if (
-                                        self.current_branches >= self.mob_costs[mob_index]
-                                        and not self._mob_spawn_on_cooldown(mob_index)
-                                    ):
-                                        cost = self.mob_costs[mob_index]
-                                        if self._spawn_mob_on_path(mob_index):
-                                            self.current_branches -= cost
-                                else:
-                                    self.selected_mob_type = mob_index
-                            elif ui_action == "SCROLL_LEFT":
-                                if self.scroll_page > 0:
-                                    self.scroll_page -= 1
-                            elif ui_action == "SCROLL_RIGHT":
-                                last = SCRIPT_OF_EVIL_PAGE_COUNT - 1
-                                if self.scroll_page < last:
-                                    self.scroll_page += 1
-                            elif ui_action == "SETTINGS":
-                                self.showing_ingame_settings = True
-                                self._refresh_ingame_settings_hitboxes()
-                                self._update_settings_volume_label()
-                                self._clear_path_editing()
-################################################################################################################
-                            elif not self._path_edit_locked():
-                                if self.build:
-                                    self.set_path = True
-                                else:
-                                    self.rm_path = True
-                    elif event.type == pygame.MOUSEBUTTONUP:
-                        if event.button == 1:
-                            self.set_path = False
-                            self.rm_path = False
-                    elif event.type == pygame.KEYDOWN:
-                        if event.key == pygame.K_r:
-                            if not self.round_active:
-                                self.reset_grid(wave=self.wave)
-                                self.edit_mode = True
-                                self.round_active = False
-                        if event.key == pygame.K_b:
-                            self.build = not self.build
-                        if event.key == pygame.K_v:
-                            self.see_through_obstacles = True
-                        if event.key == pygame.K_1 and self.is_mob_unlocked(0):
-                            self.selected_mob_type = 0
-                        if event.key == pygame.K_2 and self.is_mob_unlocked(1):
-                            self.selected_mob_type = 1
-                        if event.key == pygame.K_3 and self.is_mob_unlocked(2):
-                            self.selected_mob_type = 2
-                        if event.key == pygame.K_4 and self.is_mob_unlocked(3):
-                            self.selected_mob_type = 3
-                        if event.key == pygame.K_5 and self.is_mob_unlocked(4):
-                            self.selected_mob_type = 4
-                        if event.key in (pygame.K_SPACE, pygame.K_RETURN):
-                            if self._can_start_wave_combat():
-                                self._start_wave_combat()
+                            self._clear_path_editing()
+                        elif ui_action == "BOOK_OF_LIFE":
+                            self.showing_book = not self.showing_book
+                            if self.showing_scroll is True:
+                                self.showing_scroll = not self.showing_scroll
+                            self._clear_path_editing()
+                        elif ui_action and ui_action.startswith("SPAWN_BOX_"):
+                            mob_index = int(ui_action.split("_")[2])
+                            if not self.is_mob_unlocked(mob_index):
+                                pass
                             elif self.round_active and not self.edit_mode:
-                                available_mobs = self.get_available_mobs_for_wave()
+                                self.selected_mob_type = mob_index
                                 if (
-                                    self.selected_mob_type in available_mobs
-                                    and self.current_branches >= self.mob_costs[self.selected_mob_type]
-                                    and not self._mob_spawn_on_cooldown(self.selected_mob_type)
+                                    self.current_branches >= self.mob_costs[mob_index]
+                                    and not self._mob_spawn_on_cooldown(mob_index)
                                 ):
-                                    cost = self.mob_costs[self.selected_mob_type]
-                                    if self._spawn_mob_on_path(self.selected_mob_type):
+                                    cost = self.mob_costs[mob_index]
+                                    if self._spawn_mob_on_path(mob_index):
                                         self.current_branches -= cost
+                            else:
+                                self.selected_mob_type = mob_index
+                        elif ui_action == "SCROLL_LEFT":
+                            if self.scroll_page > 0:
+                                self.scroll_page -= 1
+                        elif ui_action == "SCROLL_RIGHT":
+                            last = SCRIPT_OF_EVIL_PAGE_COUNT - 1
+                            if self.scroll_page < last:
+                                self.scroll_page += 1
+                        elif ui_action == "SETTINGS":
+                            self.showing_ingame_settings = True
+                            self._refresh_ingame_settings_hitboxes()
+                            self._update_settings_volume_label()
+                            self._clear_path_editing()
+################################################################################################################
+                        elif not self._path_edit_locked():
+                            if self.build:
+                                self.set_path = True
+                            else:
+                                self.rm_path = True
+                elif event.type == pygame.MOUSEBUTTONUP:
+                    if event.button == 1:
+                        self.set_path = False
+                        self.rm_path = False
+                elif event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_r:
+                        if not self.round_active:
+                            self.reset_grid(wave=self.wave)
+                            self.edit_mode = True
+                            self.round_active = False
+                    if event.key == pygame.K_b:
+                        self.build = not self.build
+                    if event.key == pygame.K_v:
+                        self.see_through_obstacles = True
+                    if event.key == pygame.K_1 and self.is_mob_unlocked(0):
+                        self.selected_mob_type = 0
+                    if event.key == pygame.K_2 and self.is_mob_unlocked(1):
+                        self.selected_mob_type = 1
+                    if event.key == pygame.K_3 and self.is_mob_unlocked(2):
+                        self.selected_mob_type = 2
+                    if event.key == pygame.K_4 and self.is_mob_unlocked(3):
+                        self.selected_mob_type = 3
+                    if event.key == pygame.K_5 and self.is_mob_unlocked(4):
+                        self.selected_mob_type = 4
+                    if event.key in (pygame.K_SPACE, pygame.K_RETURN):
+                        if self._can_start_wave_combat():
+                            self._start_wave_combat()
+                        elif self.round_active and not self.edit_mode:
+                            available_mobs = self.get_available_mobs_for_wave()
+                            if (
+                                self.selected_mob_type in available_mobs
+                                and self.current_branches >= self.mob_costs[self.selected_mob_type]
+                                and not self._mob_spawn_on_cooldown(self.selected_mob_type)
+                            ):
+                                cost = self.mob_costs[self.selected_mob_type]
+                                if self._spawn_mob_on_path(self.selected_mob_type):
+                                    self.current_branches -= cost
 
-                    elif event.type == self.SPAWN_MOB_EVENT:
-                        # Automatic spawning disabled - player controls spawning
-                        pass
-                    elif event.type == pygame.KEYUP:
-                        if event.key == pygame.K_v:
-                            self.see_through_obstacles = False
-            # Tree kill is handled in combat update via _on_tree_destroyed()
+                elif event.type == self.SPAWN_MOB_EVENT:
+                    # Automatic spawning disabled - player controls spawning
+                    pass
+                elif event.type == pygame.KEYUP:
+                    if event.key == pygame.K_v:
+                        self.see_through_obstacles = False
+        # Tree kill is handled in combat update via _on_tree_destroyed()
 
-            # Check lose condition: failed to kill the tree within the wave limit
-            if self.wave > MAX_WAVES and self.tree_health > 0:
-                if self.game_active:
-                    self.defeat()
-            
-            # Timed wave: must kill the tree before time runs out
-            if (
-                self.round_active
-                and not self.edit_mode
-                and self.wave_deadline_ms is not None
-                and pygame.time.get_ticks() >= self.wave_deadline_ms
-                and self.tree_health > 0
-            ):
-                self._round_failed()
+        # Check lose condition: failed to kill the tree within the wave limit
+        if self.wave > MAX_WAVES and self.tree_health > 0:
+            if self.game_active:
+                self.defeat()
 
-            self.draw_window()
-            if self.showing_start_screen:
-                self.clock.tick(15)
-                continue
-            elif self.showing_cutscene:
-                self.clock.tick(30)  # Slower frame rate for cutscenes
-                continue
+        # Timed wave: must kill the tree before time runs out
+        if (
+            self.round_active
+            and not self.edit_mode
+            and self.wave_deadline_ms is not None
+            and pygame.time.get_ticks() >= self.wave_deadline_ms
+            and self.tree_health > 0
+        ):
+            self._round_failed()
+
+        self.draw_window()
+        if self.showing_start_screen:
+            self.clock.tick(15)
+        elif self.showing_cutscene:
+            self.clock.tick(30)  # Slower frame rate for cutscenes
+        else:
             self.clock.tick(60)
+        return True
 
 
 # ========
 
 if __name__ == "__main__":
-    q = Game()
-    q.run_app()
+    Game().run_app()
 
