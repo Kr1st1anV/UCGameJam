@@ -41,9 +41,17 @@ STAGE_SETTINGS_PAGE = {
     STAGE_SUNSHINE: "settingsmain.png",
 }
 STAGE_BG_FALLBACK = STAGE_BACKGROUNDS[STAGE_SUNSHINE]
+# --- Layout tuning (edit these) ---
+# Cave background: screen position where cave_sky.png is drawn (x, y from top-left)
+CAVE_SKY_POS = (-50, -50)
+# Sunshine sky blit offset (cave uses CAVE_SKY_POS above)
+SUNSHINE_SKY_POS = (0, 0)
 # Map portrait (top of play area): sunshine = Tree of Life; cave = willow (3 damage stages)
 TREE_PORTRAIT_POS = (210, 30)
-TREE_PORTRAIT_SCALE = 1.5
+TREE_PORTRAIT_SCALE = 1.5  # Tree of Life (sunshine)
+# Cave willow portrait: scale and screen position (independent of sunshine tree)
+CAVE_WILLOW_PORTRAIT_SCALE = 2.5
+CAVE_WILLOW_PORTRAIT_POS = (160, 0)
 STAGE_TREE_PORTRAIT_SUNSHINE = "tree_of_life.png"
 CAVE_WILLOW_PORTRAIT_STAGES = (
     "willow_tree.png",
@@ -52,8 +60,14 @@ CAVE_WILLOW_PORTRAIT_STAGES = (
 )
 SETTINGS_PAGE_SCALE = 0.8
 INGAME_SETTINGS_PAGE_POS = (250, 130)
-# Sunshine sky uses 0.7×0.75 on its source art; all skies scale to that display size.
-SKY_SCALE = (0.7, 0.75)
+# Open Book of Life overlay (assets/ui/book/)
+BOOK_OF_LIFE_OPEN_SUNSHINE = "book1.png"
+BOOK_OF_LIFE_OPEN_CAVE = "cave_book.png"
+BOOK_OF_LIFE_OPEN_SCALE = 0.55
+BOOK_OF_LIFE_OPEN_POS = (-40, 230)
+# Sky scale per stage (width×height multipliers on source art before blit)
+SUNSHINE_SKY_SCALE = (0.7, 0.75)
+CAVE_SKY_SCALE = (1.9, 1.9)  # edit for cave_sky.png
 ISLAND_SCALE = (1.0, 1.2)
 CURSOR_TOOL_SIZE = (40, 40)
 SHOVEL_CURSOR_SIZE = (46, 46)
@@ -64,7 +78,7 @@ TILE_DRAW_SCALE = 1.75  # larger isometric tiles (reference layout was 1.5)
 
 # Isometric path/spawn art: sunshine uses classic names; cave uses n* paths + spawn* corners
 SUNSHINE_GROUND_TILE = "dark_grass"
-CAVE_GROUND_TILE = "v2_dark_grass"
+CAVE_GROUND_TILE = "v2_dark_grass"  # full block when highlighted / lifted
 SUNSHINE_PATH_ICON = "path"
 CAVE_PATH_ICON = "nsingle"
 
@@ -101,6 +115,8 @@ CAVE_SPAWN_TILES = {
     "br": "spawntr (1)",
     "default": "spawnsingle (1)",
 }
+# Cave empty (0) cells: 4way at opacity 0 at rest, highlighted 4way on hover
+CAVE_GROUND_REST_TILE = "n4way"
 # Neighbor-connection key -> logical path tile (shared by sunshine and cave)
 PATH_CONNECTION_MAP = {
     "tltrblbr": "4way",
@@ -531,7 +547,7 @@ class Game:
         self.mission_briefing_active = False
         self.see_through_obstacles = False
         self.current_stage = STAGE_CAVE
-        self._sky_display_px = None
+        self._sky_display_sizes: dict[str, tuple[int, int]] = {}
         self._island_display_px = None
         self._floating_text = []  # {text, x, y, vy, life, color}
         self._last_tower_sound_ms = 0
@@ -644,17 +660,23 @@ class Game:
             and not self._game_input_locked()
         )
 
-    def _sky_display_size(self) -> tuple[int, int]:
-        """Target sky size from sunshine art (same on-screen footprint for every stage)."""
-        if self._sky_display_px is None:
-            ref_name = STAGE_BACKGROUNDS[STAGE_SUNSHINE][0]
+    def _sky_scale_for_stage(self, stage: str) -> tuple[float, float]:
+        if stage == STAGE_CAVE:
+            return CAVE_SKY_SCALE
+        return SUNSHINE_SKY_SCALE
+
+    def _sky_display_size(self, stage: str | None = None) -> tuple[int, int]:
+        """Target on-screen sky size for a stage (from that stage's source art + scale)."""
+        stage = stage or getattr(self, "current_stage", STAGE_SUNSHINE)
+        if stage not in self._sky_display_sizes:
+            ref_name = STAGE_BACKGROUNDS.get(stage, STAGE_BG_FALLBACK)[0]
             ref = self.load_world(ref_name)
-            sx, sy = SKY_SCALE
-            self._sky_display_px = (
+            sx, sy = self._sky_scale_for_stage(stage)
+            self._sky_display_sizes[stage] = (
                 int(ref.get_width() * sx),
                 int(ref.get_height() * sy),
             )
-        return self._sky_display_px
+        return self._sky_display_sizes[stage]
 
     def _island_display_size(self) -> tuple[int, int]:
         if self._island_display_px is None:
@@ -667,8 +689,10 @@ class Game:
             )
         return self._island_display_px
 
-    def _scale_sky_to_display(self, surf: pygame.Surface) -> pygame.Surface:
-        return pygame.transform.scale(surf, self._sky_display_size())
+    def _scale_sky_to_display(
+        self, surf: pygame.Surface, stage: str | None = None
+    ) -> pygame.Surface:
+        return pygame.transform.scale(surf, self._sky_display_size(stage))
 
     def _scale_island_to_display(self, surf: pygame.Surface) -> pygame.Surface:
         return pygame.transform.scale(surf, self._island_display_size())
@@ -682,7 +706,7 @@ class Game:
             background_raw = self.load_world(sky_name)
         except (pygame.error, FileNotFoundError):
             background_raw = self.load_world(fb_sky)
-        self.cached_bg_image = self._scale_sky_to_display(background_raw)
+        self.cached_bg_image = self._scale_sky_to_display(background_raw, stage)
         self.cached_island_image = None
         if island_name:
             try:
@@ -892,13 +916,14 @@ class Game:
         """Clear cached sizes/surfaces so the next load picks up new art."""
         for attr in (
             "_tree_portrait_display_px",
-            "_sky_display_px",
+            "_willow_portrait_display_px",
             "_island_display_px",
             "_ui_play_display_px",
             "_settings_page_display_px",
         ):
             if hasattr(self, attr):
                 setattr(self, attr, None)
+        self._sky_display_sizes = {}
         self.cached_willow_frames = []
         self.cached_mob_icons = {}
         self._last_tree_health_display = (-1, -1, "")
@@ -989,8 +1014,40 @@ class Game:
             return surf
         return pygame.transform.smoothscale(surf, target)
 
+    def _willow_portrait_display_size(self) -> tuple[int, int]:
+        """Target size for cave willow portrait (CAVE_WILLOW_PORTRAIT_SCALE)."""
+        if getattr(self, "_willow_portrait_display_px", None) is None:
+            ref = self.load_world(CAVE_WILLOW_PORTRAIT_STAGES[0])
+            self._willow_portrait_display_px = (
+                max(1, int(ref.get_width() * CAVE_WILLOW_PORTRAIT_SCALE)),
+                max(1, int(ref.get_height() * CAVE_WILLOW_PORTRAIT_SCALE)),
+            )
+        return self._willow_portrait_display_px
+
+    def _scale_willow_portrait(self, surf: pygame.Surface) -> pygame.Surface:
+        target = self._willow_portrait_display_size()
+        if surf.get_size() == target:
+            return surf
+        return pygame.transform.smoothscale(surf, target)
+
+    def _tree_portrait_blt_pos(self) -> tuple[int, int]:
+        """Screen position for map tree/willow portrait blit."""
+        if getattr(self, "current_stage", STAGE_SUNSHINE) == STAGE_CAVE:
+            return CAVE_WILLOW_PORTRAIT_POS
+        return TREE_PORTRAIT_POS
+
+    def get_book_of_life_open_surface(self) -> pygame.Surface | None:
+        """Opened Book of Life overlay for the active stage."""
+        if getattr(self, "current_stage", STAGE_SUNSHINE) == STAGE_CAVE:
+            return getattr(self, "cached_book_of_lifeopen_cave", None) or getattr(
+                self, "cached_book_of_lifeopen_sunshine", None
+            )
+        return getattr(self, "cached_book_of_lifeopen_sunshine", None) or getattr(
+            self, "cached_book_of_lifeopen", None
+        )
+
     def _load_tree_portraits(self) -> None:
-        """Sunshine: single Tree of Life; cave: willow stages matched to same size/position."""
+        """Sunshine: single Tree of Life; cave: willow stages (CAVE_WILLOW_PORTRAIT_SCALE)."""
         tree_raw = self.load_world(STAGE_TREE_PORTRAIT_SUNSHINE)
         self.cached_tree_life_image = self._scale_tree_portrait(tree_raw)
         self.cached_willow_frames = []
@@ -999,7 +1056,7 @@ class Game:
                 raw = self.load_world(name)
             except (pygame.error, FileNotFoundError):
                 raw = tree_raw
-            self.cached_willow_frames.append(self._scale_tree_portrait(raw))
+            self.cached_willow_frames.append(self._scale_willow_portrait(raw))
 
     def get_tree_portrait_image(self) -> pygame.Surface | None:
         if getattr(self, "current_stage", STAGE_SUNSHINE) == STAGE_CAVE:
@@ -1119,10 +1176,11 @@ class Game:
     def _tree_of_life_float_pos(self) -> tuple[int, int]:
         """Screen center of the map tree portrait (Tree of Life or cave willow)."""
         portrait = self.get_tree_portrait_image()
+        blt_pos = self._tree_portrait_blt_pos()
         if portrait is not None:
-            rect = portrait.get_rect(topleft=TREE_PORTRAIT_POS)
+            rect = portrait.get_rect(topleft=blt_pos)
             return rect.centerx, rect.centery
-        return TREE_PORTRAIT_POS[0] + 80, TREE_PORTRAIT_POS[1] + 90
+        return blt_pos[0] + 80, blt_pos[1] + 90
 
     def _on_tree_damage(self, finished_mobs: list) -> None:
         if not finished_mobs:
@@ -1447,9 +1505,26 @@ class Game:
                 scroll_raw = pygame.image.load(scroll_path).convert_alpha()
                 self.cached_scrolls[i] = pygame.transform.scale(scroll_raw, (int(scroll_raw.get_width() * 0.8), int(scroll_raw.get_height() * 0.8)))
             
-            # Book of life - use book1.png from assets
-            book_of_lifeopen_raw = pygame.image.load(os.path.join(ASSETS_UI_DIR, 'book', 'book1.png')).convert_alpha()
-            self.cached_book_of_lifeopen = pygame.transform.scale(book_of_lifeopen_raw, (int(book_of_lifeopen_raw.get_width() * 0.55), int(book_of_lifeopen_raw.get_height() * 0.55)))
+            # Book of Life open overlay: sunshine = book1, cave = cave_book
+            book_dir = os.path.join(ASSETS_UI_DIR, "book")
+
+            def _load_open_book(filename: str) -> pygame.Surface:
+                raw = pygame.image.load(os.path.join(book_dir, filename)).convert_alpha()
+                return pygame.transform.scale(
+                    raw,
+                    (
+                        int(raw.get_width() * BOOK_OF_LIFE_OPEN_SCALE),
+                        int(raw.get_height() * BOOK_OF_LIFE_OPEN_SCALE),
+                    ),
+                )
+
+            self.cached_book_of_lifeopen_sunshine = _load_open_book(BOOK_OF_LIFE_OPEN_SUNSHINE)
+            try:
+                self.cached_book_of_lifeopen_cave = _load_open_book(BOOK_OF_LIFE_OPEN_CAVE)
+            except (pygame.error, FileNotFoundError):
+                self.cached_book_of_lifeopen_cave = self.cached_book_of_lifeopen_sunshine
+            # Back-compat alias
+            self.cached_book_of_lifeopen = self.cached_book_of_lifeopen_sunshine
             
             # Surrender page
             surrender_raw = pygame.image.load(os.path.join(ASSETS_UI_DIR, 'surrenderpage.png')).convert_alpha()
@@ -1581,15 +1656,21 @@ class Game:
             is_hovered and self.build and not self._path_edit_locked()
         )
 
+    def _cave_ground_invisible_surface(self) -> pygame.Surface | None:
+        return getattr(self, "cave_ground_tile_invisible", None)
+
     def _blit_ground_tile(self, draw_x: int, draw_y: int, is_hovered: bool) -> None:
-        """Cave: invisible ground until hover/V; then show lifted (highlighted) tile."""
+        """Cave: invisible 4way at rest; highlighted 4way on hover/V."""
         ground = self._ground_tile_key()
         highlighted = self._ground_tile_highlighted(is_hovered)
         if getattr(self, "current_stage", STAGE_SUNSHINE) == STAGE_CAVE:
-            if highlighted:
-                self.surface.blit(self.h_tiles[ground], (draw_x, draw_y))
-            elif getattr(self, "cave_ground_tile_hidden", None) is not None:
-                self.surface.blit(self.cave_ground_tile_hidden, (draw_x, draw_y))
+            hover_tile = self.h_tiles.get(CAVE_GROUND_REST_TILE, self.h_tiles.get(ground))
+            if highlighted and hover_tile is not None:
+                self.surface.blit(hover_tile, (draw_x, draw_y))
+            else:
+                invisible = self._cave_ground_invisible_surface()
+                if invisible is not None:
+                    self.surface.blit(invisible, (draw_x, draw_y))
             return
         if highlighted:
             self.surface.blit(self.h_tiles[ground], (draw_x, draw_y))
@@ -1641,10 +1722,11 @@ class Game:
             ground = SUNSHINE_GROUND_TILE
         self.spriteSize = (self.tiles[ground].get_width(), self.tiles[ground].get_height())
         self.h_tiles = {name: self.highlight_block(tile) for name, tile in self.tiles.items()}
-        self.cave_ground_tile_hidden = None
-        if CAVE_GROUND_TILE in self.tiles:
-            self.cave_ground_tile_hidden = self.tiles[CAVE_GROUND_TILE].copy()
-            self.cave_ground_tile_hidden.set_alpha(0)
+        self.cave_ground_tile_invisible = None
+        ref = self.tiles.get(CAVE_GROUND_REST_TILE)
+        if ref is not None:
+            self.cave_ground_tile_invisible = ref.copy()
+            self.cave_ground_tile_invisible.set_alpha(0)
 
     def initiate_towers(self):
         scale_factor = self.tile_scale_factor()
@@ -2077,7 +2159,9 @@ class Game:
                 self.ui_hitboxes['scroll_right'] = pygame.Rect(20 + (scroll_rect.width * 2 // 3), 240, scroll_rect.width // 3, scroll_rect.height)
 
         if self.showing_book:
-            self.surface.blit(self.cached_book_of_lifeopen, (-40, 230))
+            book_surf = self.get_book_of_life_open_surface()
+            if book_surf is not None:
+                self.surface.blit(book_surf, BOOK_OF_LIFE_OPEN_POS)
         
         self.draw_spawn_boxes()
 
@@ -2462,12 +2546,20 @@ class Game:
             self.surface.fill(self.bgcolor)
             # Use cached images instead of loading every frame (with fallback if not initialized)
             if hasattr(self, 'cached_bg_image'):
-                self.surface.blit(self.cached_bg_image, (0, 0))
+                if getattr(self, "current_stage", STAGE_SUNSHINE) == STAGE_CAVE:
+                    self.surface.blit(self.cached_bg_image, CAVE_SKY_POS)
+                else:
+                    self.surface.blit(self.cached_bg_image, SUNSHINE_SKY_POS)
             else:
                 # Fallback: load and scale on the fly if cache not initialized
-                background_raw = self.load_world("wbsky.png")
-                bg_img = self._scale_sky_to_display(background_raw)
-                self.surface.blit(bg_img, (0, 0))
+                stage = getattr(self, "current_stage", STAGE_SUNSHINE)
+                sky_name = STAGE_BACKGROUNDS.get(stage, STAGE_BG_FALLBACK)[0]
+                background_raw = self.load_world(sky_name)
+                bg_img = self._scale_sky_to_display(background_raw, stage)
+                if stage == STAGE_CAVE:
+                    self.surface.blit(bg_img, CAVE_SKY_POS)
+                else:
+                    self.surface.blit(bg_img, SUNSHINE_SKY_POS)
             
             if getattr(self, "current_stage", STAGE_SUNSHINE) == STAGE_SUNSHINE:
                 self.update_and_draw_clouds()
@@ -2488,11 +2580,12 @@ class Game:
             self.map_grid()
             
             tree_portrait = self.get_tree_portrait_image()
+            tree_blt_pos = self._tree_portrait_blt_pos()
             if tree_portrait is not None:
-                self.surface.blit(tree_portrait, TREE_PORTRAIT_POS)
+                self.surface.blit(tree_portrait, tree_blt_pos)
             else:
                 tree_life_raw = self.load_world(STAGE_TREE_PORTRAIT_SUNSHINE)
-                self.surface.blit(self._scale_tree_portrait(tree_life_raw), TREE_PORTRAIT_POS)
+                self.surface.blit(self._scale_tree_portrait(tree_life_raw), tree_blt_pos)
             
             self.draw_tree_of_life()
             #self.surface.blit(self.load_image('red.png'), (800, 600))
