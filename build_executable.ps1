@@ -60,5 +60,5 @@ Write-Host ""
 
 Write-Host "Optional: some hosts block .exe — zip only that file for upload:"
 
-Write-Host "  Compress-Archive -Path `"$exe`" -DestinationPath dist\Heliosylva-Windows.zip"
+Write-Host ('  Compress-Archive -Path "' + $exe + '" -DestinationPath dist\Heliosylva-Windows.zip')
 
