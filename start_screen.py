@@ -14,6 +14,59 @@ MENU_SETTINGS_PAGE_FILE = "settingsmain.png"
 # settingsmain.png — single Instructions row (offsets from scaled page top-left)
 MENU_SETTINGS_INSTR_OFFSET = (80, 245, 370, 40)
 
+INSTRUCTIONS_TITLE = "Instructions"
+INSTRUCTIONS_LINES = (
+    "Draw a path to the tree, then press SPACE to start each wave.",
+    "Hold V to show paths through obstacles.",
+    "Press B to switch between hammer (build) and shovel (remove).",
+    "Press 1, 2, 3, 4, or 5 to choose which bug to spawn.",
+)
+INSTRUCTIONS_PANEL_BG = (30, 40, 70, 230)
+INSTRUCTIONS_PANEL_BORDER = (255, 200, 80)
+INSTRUCTIONS_TITLE_COLOR = (255, 200, 80)
+INSTRUCTIONS_BODY_COLOR = (120, 85, 45)
+
+
+def draw_instructions_panel(
+    surface: pygame.Surface,
+    title_font: pygame.font.Font,
+    body_font: pygame.font.Font,
+    wave_count: int = 20,
+) -> tuple[pygame.Rect, pygame.Rect]:
+    """Draw instructions text panel; returns (panel_rect, close_hitbox)."""
+    goal_line = f"Beat all {wave_count} waves to destroy the Tree of Life."
+    title = title_font.render(INSTRUCTIONS_TITLE, True, INSTRUCTIONS_TITLE_COLOR)
+    body_surfs = [
+        body_font.render(goal_line, True, INSTRUCTIONS_BODY_COLOR),
+        *[body_font.render(line, True, INSTRUCTIONS_BODY_COLOR) for line in INSTRUCTIONS_LINES],
+    ]
+    pad_x, pad_y = 28, 22
+    line_gap = 8
+    block_w = max([title.get_width(), *[s.get_width() for s in body_surfs]]) + pad_x * 2
+    block_h = (
+        pad_y
+        + title.get_height()
+        + 10
+        + sum(s.get_height() for s in body_surfs)
+        + line_gap * (len(body_surfs) - 1)
+        + pad_y
+    )
+    sw, sh = surface.get_size()
+    panel_rect = pygame.Rect((sw - block_w) // 2, (sh - block_h) // 2, block_w, block_h)
+    panel = pygame.Surface((block_w, block_h), pygame.SRCALPHA)
+    panel.fill(INSTRUCTIONS_PANEL_BG)
+    pygame.draw.rect(panel, INSTRUCTIONS_PANEL_BORDER, panel.get_rect(), 2)
+    surface.blit(panel, panel_rect.topleft)
+    y = panel_rect.y + pad_y
+    surface.blit(title, (panel_rect.x + pad_x, y))
+    y += title.get_height() + 10
+    for surf in body_surfs:
+        surface.blit(surf, (panel_rect.x + pad_x, y))
+        y += surf.get_height() + line_gap
+    close_rect = pygame.Rect(panel_rect.x + 81, panel_rect.y + 88, 21, 22).inflate(16, 14)
+    return panel_rect, close_rect
+
+
 class StartScreen:
     def __init__(self, surface):
         self.surface = surface
@@ -57,12 +110,8 @@ class StartScreen:
         self.settings_volume_label = ""
         font_path = os.path.join(os.path.dirname(__file__), 'fonts', 'Dico.ttf')
         self.settings_font = pygame.font.Font(font_path, 25)
-
-        self.instr_page = self.load_image('instr_man.png')
-        self.instr_page = pygame.transform.scale(
-            self.instr_page,
-            (int(self.instr_page.get_width() * 0.8), int(self.instr_page.get_height() * 0.8)),
-        )
+        self.instr_title_font = pygame.font.Font(font_path, 34)
+        self.instr_body_font = pygame.font.Font(font_path, 21)
 
         self.settings_rect = self.settings_img.get_rect(topleft=(730, 610))
         self.settings_hitbox = self.settings_rect.inflate(-12, -12)
@@ -79,13 +128,7 @@ class StartScreen:
         ox, oy, w, h = MENU_SETTINGS_INSTR_OFFSET
         self.instr_rect = pygame.Rect(spx + ox, spy + oy, w, h)
 
-        iw, ih = self.instr_page.get_size()
-        self.instr_page_pos = (
-            (self.surface.get_width() - iw) // 2,
-            (self.surface.get_height() - ih) // 2,
-        )
-        ipx, ipy = self.instr_page_pos
-        self.close_instr_rect = pygame.Rect(ipx + 81, ipy + 88, 21, 22).inflate(16, 14)
+        self.close_instr_rect = pygame.Rect(0, 0, 1, 1)
 
     def load_image(self, name):
         path = os.path.join(os.path.dirname(__file__), 'buttons', name)
@@ -145,7 +188,11 @@ class StartScreen:
 
     def draw_instructions(self):
         """Draws the buttons and the logo on top of the animation"""
-        self.surface.blit(self.instr_page, self.instr_page_pos)
+        _, self.close_instr_rect = draw_instructions_panel(
+            self.surface,
+            self.instr_title_font,
+            self.instr_body_font,
+        )
         self._draw_debug_outlines("instructions")
 
     def check_click(self, mouse_pos):

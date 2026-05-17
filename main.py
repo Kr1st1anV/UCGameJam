@@ -5,7 +5,7 @@ import copy
 import numpy as np
 from maps import Maps
 import random
-from start_screen import StartScreen
+from start_screen import StartScreen, draw_instructions_panel
 
 DEFAULT_BGCOLOR = (137, 207, 240)
 DEFAULT_WIDTH   = 978
@@ -386,9 +386,11 @@ HUD_TEXT_BROWN_LIGHT = (120, 85, 45)
 HUD_TEXT_BROWN_ACCENT = (200, 145, 55)
 HUD_HEALTH_TEXT_SUNSHINE = HUD_TEXT_BROWN
 HUD_HEALTH_TEXT_CAVE = (210, 185, 150)
-# Poison from bush tiles (grid -8); VFX until dedicated UI
-POISON_OUTLINE_COLOR = (40, 220, 70)
-POISON_OUTLINE_WIDTH = 3
+# Poison from bush tiles (grid -8)
+POISON_OVERLAY_FILE = "Untitled124_20260516224122.png"
+POISON_OVERLAY_PAD = 8  # pixels beyond mob sprite bounds
+POISON_OVERLAY_ALPHA = 160  # 0–255; lower = more transparent
+POISON_BUSH_CENTER_TOUCH_PX = 20  # mob must reach this close to bush sprite center
 POISON_HP_PCT = 0.02  # damage per tick = this fraction of current HP
 POISON_TICK_MS = 500
 # Surrender popup (coords relative to scaled surrenderpage blit top-left, scale 0.8)
@@ -506,7 +508,7 @@ class Mob:
         self.current_frame = 0
         self.animation_counter = 0
 
-    def draw(self, surface):
+    def draw(self, surface, poison_overlay: pygame.Surface | None = None):
         current_sprite = self.mobframes[self.current_frame]
         
         if self.target_idx < len(self.waypoints):
@@ -519,13 +521,15 @@ class Mob:
         # Offset mob slightly downward to align with shadows
         sprite_rect = current_sprite.get_rect(center=(self.pos.x, self.pos.y + 8))
         surface.blit(current_sprite, sprite_rect)
-        if self.poisoned:
-            pygame.draw.rect(
-                surface,
-                POISON_OUTLINE_COLOR,
-                sprite_rect.inflate(8, 8),
-                POISON_OUTLINE_WIDTH,
-            )
+        if self.poisoned and poison_overlay is not None:
+            overlay_rect = sprite_rect.inflate(POISON_OVERLAY_PAD, POISON_OVERLAY_PAD)
+            ow, oh = poison_overlay.get_size()
+            if (ow, oh) != overlay_rect.size:
+                overlay_surf = pygame.transform.smoothscale(poison_overlay, overlay_rect.size)
+            else:
+                overlay_surf = poison_overlay.copy()
+            overlay_surf.set_alpha(POISON_OVERLAY_ALPHA)
+            surface.blit(overlay_surf, overlay_rect)
 
         if self.health > 0:
             bar_width = 40
@@ -609,6 +613,7 @@ class Game:
         self.mob_spawn_cooldown_until = {i: 0 for i in range(MOB_COUNT)}
         self._tree_kill_handled = False
         self.poison_bush_cells: set[tuple[int, int]] = set()
+        self._poison_bush_touch_zones: list[tuple[pygame.Vector2, float]] = []
         
         self.wave = 1
         self.begin_wave_setup()
@@ -901,6 +906,18 @@ class Game:
         close = pygame.Rect(pos[0] + 81, pos[1] + 88, 21, 22).inflate(16, 14)
         self._ingame_subpage_close_rect = close
 
+    def _draw_ingame_instructions_overlay(self) -> None:
+        veil = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
+        veil.fill((8, 12, 28, 160))
+        self.surface.blit(veil, (0, 0))
+        _, close = draw_instructions_panel(
+            self.surface,
+            self.cached_font_large,
+            self.cached_font_small,
+            wave_count=MAX_WAVES,
+        )
+        self._ingame_subpage_close_rect = close
+
     def _ingame_settings_click(self, mouse_pos) -> str | None:
         hb = self._ingame_settings_hitboxes
         if hb.get("close") and hb["close"].collidepoint(mouse_pos):
@@ -1010,6 +1027,7 @@ class Game:
         self._last_tree_health_display = (-1, -1, "")
         if hasattr(self, "cave_ground_tile_invisible"):
             self.cave_ground_tile_invisible = None
+        self.cached_poison_overlay = None
 
     def _load_mob_icon_caches(self) -> None:
         icon_box = MOB_GRID_SLOT_W - 12
@@ -1039,6 +1057,16 @@ class Game:
             except Exception:
                 pass
 
+    def _load_poison_overlay(self) -> None:
+        path = os.path.join(MOBS_DIR, POISON_OVERLAY_FILE)
+        if not os.path.isfile(path):
+            self.cached_poison_overlay = None
+            return
+        try:
+            self.cached_poison_overlay = pygame.image.load(path).convert_alpha()
+        except pygame.error:
+            self.cached_poison_overlay = None
+
     def reload_visual_caches(self) -> None:
         """Reload backgrounds, UI, tree portraits, mob icons, and tower sprites."""
         self.invalidate_visual_caches()
@@ -1047,6 +1075,7 @@ class Game:
         self._load_all_stage_ui_caches()
         self._load_tree_portraits()
         self._load_mob_icon_caches()
+        self._load_poison_overlay()
         stage = self.stage_for_wave(self.wave)
         self._apply_stage_visuals(stage)
         self.rebuild_map_scaled_assets()
@@ -1240,8 +1269,6 @@ class Game:
         self.sfx_volume_level = max(0, min(SFX_VOLUME_MAX, self.sfx_volume_level + delta))
         self._apply_sfx_volume()
         self._update_settings_volume_label()
-        if self.sfx_volume_level > 0:
-            self._play_spawn_chirp()
 
     def _update_settings_volume_label(self) -> None:
         self.settings_volume_label = str(self.sfx_volume_level)
@@ -1735,6 +1762,7 @@ class Game:
             self.tile_changed = False
             
             self._load_mob_icon_caches()
+            self._load_poison_overlay()
             
         except Exception as e:
             import traceback
@@ -1804,6 +1832,30 @@ class Game:
                 if self.world_grid[i][j] == 1:
                     cells.add(ij)
         self.poison_bush_cells = cells
+        self._rebuild_poison_bush_touch_zones()
+
+    def _rebuild_poison_bush_touch_zones(self) -> None:
+        zones: list[tuple[pygame.Vector2, float]] = []
+        for i, j in self.poison_bush_cells:
+            rect = self._bush_sprite_rect(i, j)
+            if rect is not None:
+                center = pygame.Vector2(rect.centerx, rect.centery)
+                radius = max(
+                    POISON_BUSH_CENTER_TOUCH_PX,
+                    min(rect.width, rect.height) * 0.22,
+                )
+            else:
+                center = self._tower_attack_position(i, j, "bush")
+                radius = POISON_BUSH_CENTER_TOUCH_PX
+            zones.append((center, radius))
+        self._poison_bush_touch_zones = zones
+
+    def _mob_touches_poison_bush_center(self, mob: Mob) -> bool:
+        mob_anchor = pygame.Vector2(mob.pos.x, mob.pos.y + 8)
+        for center, radius in self._poison_bush_touch_zones:
+            if mob_anchor.distance_to(center) <= radius:
+                return True
+        return False
 
     def _update_mob_poison_status(self) -> None:
         now = pygame.time.get_ticks()
@@ -1811,10 +1863,9 @@ class Game:
             if mob.at_end or mob.health <= 0:
                 mob.poisoned = False
                 continue
-            gi, gj = self._world_to_grid(mob.pos.x, mob.pos.y)
-            on_poison = (gi, gj) in self.poison_bush_cells
-            mob.poisoned = on_poison
-            if not on_poison:
+            if self._mob_touches_poison_bush_center(mob):
+                mob.poisoned = True
+            if not mob.poisoned:
                 continue
             if now - mob._poison_tick_ms < POISON_TICK_MS:
                 continue
@@ -1984,7 +2035,7 @@ class Game:
 
     def run_app(self) -> None:
         pygame.init()
-        pygame.display.set_caption("Heliosylva: Power Offense — you are the wave")
+        pygame.display.set_caption("Heliosylva")
         self.surface = pygame.display.set_mode((self.width,self.height))
         self.showing_start_screen = True
         self.showing_settings_screen = False
@@ -2060,6 +2111,7 @@ class Game:
                         if tile_int != 1:
                             if tile_int == -8:
                                 self.poison_bush_cells.add((i, j))
+                                self._rebuild_poison_bush_touch_zones()
                             self.world_grid[i][j] = 1
                             self.paths_remaining -= 1
                             self.tile_changed = True
@@ -2423,7 +2475,7 @@ class Game:
         if self.showing_ingame_settings:
             self._draw_ingame_settings_overlay()
         elif self.showing_ingame_instructions:
-            self._draw_ingame_subpage_overlay(self._ensure_instr_page_cache())
+            self._draw_ingame_instructions_overlay()
         elif self.showing_ingame_credits and getattr(self, "cached_credits_page", None) is not None:
             self._draw_ingame_subpage_overlay(self.cached_credits_page)
 
@@ -2809,7 +2861,10 @@ class Game:
                 elif item['type'] == 'ladybug':
                     self.surface.blit(item['surf'], item['pos'])
                 elif item['type'] == 'mob':
-                    item['obj'].draw(self.surface)
+                    item['obj'].draw(
+                        self.surface,
+                        getattr(self, "cached_poison_overlay", None),
+                    )
 
             self.draw_UI()
             
@@ -2977,8 +3032,13 @@ class Game:
                             if action == "SETTINGS":
                                 self.showing_settings_screen = True
                         elif self.showing_instructions_scene:
-                            action = self.start_screen.check_closing_instructions(event.pos)
-                            if action == "CLOSE":
+                            if (
+                                event.type == pygame.MOUSEBUTTONDOWN
+                                and event.button == 1
+                            ) or (
+                                event.type == pygame.KEYDOWN
+                                and event.key == pygame.K_ESCAPE
+                            ):
                                 self.showing_instructions_scene = False
                         elif self.showing_settings_screen:
                             action = self.start_screen.check_settings(event.pos)
@@ -3001,11 +3061,22 @@ class Game:
                             self.mission_briefing_active = False
                             continue
                         continue
-                    if self.showing_ingame_instructions or self.showing_ingame_credits:
+                    if self.showing_ingame_instructions:
+                        if (
+                            event.type == pygame.MOUSEBUTTONDOWN
+                            and event.button == 1
+                        ) or (
+                            event.type == pygame.KEYDOWN
+                            and event.key == pygame.K_ESCAPE
+                        ):
+                            self.showing_ingame_instructions = False
+                            self.showing_ingame_settings = True
+                            self._refresh_ingame_settings_hitboxes()
+                        continue
+                    if self.showing_ingame_credits:
                         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                             close = getattr(self, "_ingame_subpage_close_rect", None)
                             if close is None or close.collidepoint(event.pos):
-                                self.showing_ingame_instructions = False
                                 self.showing_ingame_credits = False
                                 self.showing_ingame_settings = True
                                 self._refresh_ingame_settings_hitboxes()
@@ -3022,7 +3093,6 @@ class Game:
                             elif action == "INSTRUCTIONS":
                                 self.showing_ingame_settings = False
                                 self.showing_ingame_credits = False
-                                self._ensure_instr_page_cache()
                                 self.showing_ingame_instructions = True
                             elif action == "SURRENDER":
                                 self.showing_ingame_settings = False
