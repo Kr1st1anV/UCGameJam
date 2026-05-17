@@ -74,7 +74,7 @@ dragonfly = {
     "health": 6,
     "damage": 2,
     "speed": 4,
-    "cost": 2
+    "cost": 1
 }
 
 snail = {
@@ -98,6 +98,13 @@ beetle = {
     "cost": 8,
 }
 
+firefly = {
+    "health": 60,
+    "damage": 18,
+    "speed": 3.5,
+    "cost": 9,
+}
+
 # Player mobs (same insects in cave and sunshine); towers differ by stage
 MOBS_BY_INDEX = (worm, butterfly, dragonfly, snail, beetle)
 MOB_SPRITES = (
@@ -108,7 +115,7 @@ MOB_SPRITES = (
     ("beetle", ("beetle_0001.png", "beetle_0002.png", "beetle_0003.png", "beetle_0004.png")),
 )
 
-MOB_COUNT = 5
+MOB_COUNT = 6
 MOB_SPAWN_COOLDOWN_MS = 650
 MOB_SPRITE_HEIGHT_RATIO = 0.52  # mob frame height vs isometric tile size
 MOB_SPEED_CELL_FACTOR = 0.028
@@ -211,12 +218,6 @@ TOWER_SCORPION = {
     "attack": 28,
     "attack_speed": 1,
     "cooldown": 1000 // 1,
-    "range_tiles": 2,
-}
-TOWER_FIREFLY = {
-    "attack": 9,
-    "attack_speed": 3,
-    "cooldown": 1000 // 3,
     "range_tiles": 2,
 }
 
