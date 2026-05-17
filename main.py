@@ -585,6 +585,16 @@ class Game:
         self.begin_wave_setup()
 
         pygame.font.init()
+
+        pygame.font.init()
+
+        try:
+            pygame.mixer.init()
+            pygame.mixer.music.load("music/background_music.ogg")
+            pygame.mixer.music.set_volume(0.3)
+            pygame.mixer.music.play(-1)
+        except pygame.error:
+            print("Audio device not available.")
         
         # Cache for rendered text surfaces to avoid re-rendering every frame
         self.cached_text_surfaces = {}
